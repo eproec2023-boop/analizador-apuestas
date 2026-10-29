@@ -2,138 +2,182 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from scipy.stats import poisson
+import requests
+import json
+import re
 
-# Configuración de la página
-st.set_page_config(page_title="Pro Bet Analyzer 2.0", layout="wide")
-st.title("⚽ Dashboard Automático de Value Bets (Versión 2.0)")
-st.markdown("Selecciona la **Liga** y los **Clubes** en el menú izquierdo. El sistema descarga las estadísticas actualizadas de la temporada y calcula todo automáticamente.")
+st.set_page_config(page_title="Pro Bet Analyzer - Edición Betano", layout="wide")
+st.title("⚽ Dashboard Automático xG + Analizador de Cuotas Betano")
 
-# --- CONEXIÓN AUTOMÁTICA A BASE DE DATOS DE LIGAS ---
-LIGAS = {
-    "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
-    "🇪🇸 LaLiga (España)": "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
-    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
-    "🇩🇪 Bundesliga (Alemania)": "https://www.football-data.co.uk/mmz4281/2627/D1.csv",
-    "🇫🇷 Ligue 1 (Francia)": "https://www.football-data.co.uk/mmz4281/2627/F1.csv"
+LIGAS_UNDERSTAT = {
+    "🇮🇹 Serie A (Italia)": "Serie_A",
+    "🇪🇸 LaLiga (España)": "La_liga",
+    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": "EPL",
+    "🇩🇪 Bundesliga (Alemania)": "Bundesliga",
+    "🇫🇷 Ligue 1 (Francia)": "Ligue_1"
 }
 
 @st.cache_data(ttl=3600)
-def cargar_datos_liga(url):
+def obtener_datos_understat(liga_codigo, temporada="2026"):
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    url_api = f"https://understat.com/getLeagueData/{liga_codigo}/{temporada}"
     try:
-        df = pd.read_csv(url)
-        df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-        return df
+        r = requests.get(url_api, headers=headers, timeout=10)
+        datos_equipos = r.json()['teams']
     except Exception:
-        # Respaldo automático a temporada previa si el archivo nuevo aún no inicia
-        url_backup = url.replace("/2627/", "/2526/")
-        df = pd.read_csv(url_backup)
-        df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-        return df
+        url = f"https://understat.com/league/{liga_codigo}/{temporada}"
+        r = requests.get(url, headers=headers, timeout=10)
+        match = re.search(r"teamsData\s*=\s*JSON\.parse\('([^']+)'\)", r.text)
+        raw_json = match.group(1).encode('utf-8').decode('unicode_escape')
+        datos_equipos = json.loads(raw_json)
+    
+    filas = []
+    for team_id, info in datos_equipos.items():
+        nombre = info['title']
+        hist = info['history']
+        home_games = [m for m in hist if m['h_a'] == 'h']
+        away_games = [m for m in hist if m['h_a'] == 'a']
+        m_h = len(home_games) if len(home_games) > 0 else 1
+        m_a = len(away_games) if len(away_games) > 0 else 1
+        
+        filas.append({
+            'Equipo': nombre,
+            'M_Home': len(home_games),
+            'G_Home': sum(m['scored'] for m in home_games) / m_h,
+            'GA_Home': sum(m['missed'] for m in home_games) / m_h,
+            'xG_Home': sum(m['xG'] for m in home_games) / m_h,
+            'xGA_Home': sum(m['xGA'] for m in home_games) / m_h,
+            'M_Away': len(away_games),
+            'G_Away': sum(m['scored'] for m in away_games) / m_a,
+            'GA_Away': sum(m['missed'] for m in away_games) / m_a,
+            'xG_Away': sum(m['xG'] for m in away_games) / m_a,
+            'xGA_Away': sum(m['xGA'] for m in away_games) / m_a,
+        })
+    return pd.DataFrame(filas).sort_values('Equipo')
 
-# --- BARRA LATERAL: LISTAS DESPLEGABLES ---
+# --- 1. SELECCIÓN DE LIGA Y PARTIDO ---
 st.sidebar.header("🏆 1. Selección de Liga y Partido")
-liga_elegida = st.sidebar.selectbox("Selecciona la Liga", list(LIGAS.keys()))
+liga_nombre = st.sidebar.selectbox("Selecciona la Liga", list(LIGAS_UNDERSTAT.keys()))
+df_u = obtener_datos_understat(LIGAS_UNDERSTAT[liga_nombre])
 
-df_liga = cargar_datos_liga(LIGAS[liga_elegida])
-equipos = sorted(df_liga['HomeTeam'].unique())
-
+equipos = df_u['Equipo'].tolist()
 equipo_local = st.sidebar.selectbox("🏠 Equipo Local", equipos, index=0)
 equipo_visita = st.sidebar.selectbox("✈️ Equipo Visitante", equipos, index=1 if len(equipos) > 1 else 0)
 
-# --- CÁLCULO AUTOMÁTICO DE PROMEDIOS (LOCAL / VISITANTE / LIGA) ---
-partidos_local = df_liga[df_liga['HomeTeam'] == equipo_local]
-partidos_visita = df_liga[df_liga['AwayTeam'] == equipo_visita]
+tipo_modelo = st.sidebar.radio(
+    "🧠 Motor Estadístico:",
+    ["Híbrido Pro (70% xG + 30% Goles Reales)", "100% xG (Idéntico a Understat)", "100% Goles Reales (G / GA)"]
+)
 
-gf_local_auto = float(partidos_local['FTHG'].mean()) if len(partidos_local) > 0 else 1.35
-gc_local_auto = float(partidos_local['FTAG'].mean()) if len(partidos_local) > 0 else 1.35
+row_loc = df_u[df_u['Equipo'] == equipo_local].iloc[0]
+row_vis = df_u[df_u['Equipo'] == equipo_visita].iloc[0]
 
-gf_visita_auto = float(partidos_visita['FTAG'].mean()) if len(partidos_visita) > 0 else 1.15
-gc_visita_auto = float(partidos_visita['FTHG'].mean()) if len(partidos_visita) > 0 else 1.35
+if "100% xG" in tipo_modelo:
+    fav_loc, con_loc = row_loc['xG_Home'], row_loc['xGA_Home']
+    fav_vis, con_vis = row_vis['xG_Away'], row_vis['xGA_Away']
+    media_liga = (df_u['xG_Home'].mean() + df_u['xG_Away'].mean()) / 2
+elif "Híbrido" in tipo_modelo:
+    fav_loc = 0.7 * row_loc['xG_Home'] + 0.3 * row_loc['G_Home']
+    con_loc = 0.7 * row_loc['xGA_Home'] + 0.3 * row_loc['GA_Home']
+    fav_vis = 0.7 * row_vis['xG_Away'] + 0.3 * row_vis['G_Away']
+    con_vis = 0.7 * row_vis['xGA_Away'] + 0.3 * row_vis['GA_Away']
+    media_liga = (df_u['xG_Home'].mean() + df_u['xG_Away'].mean()) / 2
+else:
+    fav_loc, con_loc = row_loc['G_Home'], row_loc['GA_Home']
+    fav_vis, con_vis = row_vis['G_Away'], row_vis['GA_Away']
+    media_liga = (df_u['G_Home'].mean() + df_u['G_Away'].mean()) / 2
 
-promedio_liga_auto = float((df_liga['FTHG'].mean() + df_liga['FTAG'].mean()) / 2)
+with st.sidebar.expander("⚙️ Ver / Ajustar promedios arrastrados"):
+    xg_favor_local = st.number_input("xG/Goles a Favor (Local)", value=round(float(fav_loc), 2), step=0.05)
+    xg_contra_local = st.number_input("xGA/Goles en Contra (Local)", value=round(float(con_loc), 2), step=0.05)
+    xg_favor_visita = st.number_input("xG/Goles a Favor (Visita)", value=round(float(fav_vis), 2), step=0.05)
+    xg_contra_visita = st.number_input("xGA/Goles en Contra (Visita)", value=round(float(con_vis), 2), step=0.05)
+    promedio_liga = st.number_input("Promedio de la Liga", value=round(float(media_liga), 2), step=0.05)
 
-# Opción desplegable por si el usuario quiere ver o ajustar los datos arrastrados
-with st.sidebar.expander("⚙️ Ver / Ajustar promedios arrastrados (Opcional)"):
-    st.caption(f"Datos calculados de {len(partidos_local)} partidos en casa y {len(partidos_visita)} fuera.")
-    xg_favor_local = st.number_input("Promedio Goles/xG a Favor (Local)", min_value=0.1, max_value=5.0, value=round(gf_local_auto, 2), step=0.05)
-    xg_contra_local = st.number_input("Promedio Goles/xG en Contra (Local)", min_value=0.1, max_value=5.0, value=round(gc_local_auto, 2), step=0.05)
-    xg_favor_visita = st.number_input("Promedio Goles/xG a Favor (Visita)", min_value=0.1, max_value=5.0, value=round(gf_visita_auto, 2), step=0.05)
-    xg_contra_visita = st.number_input("Promedio Goles/xG en Contra (Visita)", min_value=0.1, max_value=5.0, value=round(gc_visita_auto, 2), step=0.05)
-    promedio_liga = st.number_input("Promedio de la Liga", min_value=0.5, max_value=3.0, value=round(promedio_liga_auto, 2), step=0.05)
-
-# --- BARRA LATERAL: CUOTAS DE LA CASA ---
-st.sidebar.header("💰 2. Cuotas de tu Casa de Apuestas")
-cuota_local = st.sidebar.number_input(f"Cuota Gana {equipo_local} (1)", min_value=1.01, value=2.10, step=0.05)
-cuota_empate = st.sidebar.number_input("Cuota Empate (X)", min_value=1.01, value=3.40, step=0.05)
-cuota_visita = st.sidebar.number_input(f"Cuota Gana {equipo_visita} (2)", min_value=1.01, value=3.50, step=0.05)
-cuota_over25 = st.sidebar.number_input("Cuota Más de 2.5 Goles (Over)", min_value=1.01, value=1.90, step=0.05)
-cuota_under25 = st.sidebar.number_input("Cuota Menos de 2.5 Goles (Under)", min_value=1.01, value=1.90, step=0.05)
-
-# --- MOTOR MATEMÁTICO (POISSON) ---
-fuerza_ataque_local = max(xg_favor_local, 0.1) / promedio_liga
-fuerza_defensa_visita = max(xg_contra_visita, 0.1) / promedio_liga
-lambda_local = fuerza_ataque_local * fuerza_defensa_visita * promedio_liga
-
-fuerza_ataque_visita = max(xg_favor_visita, 0.1) / promedio_liga
-fuerza_defensa_local = max(xg_contra_local, 0.1) / promedio_liga
-lambda_visita = fuerza_ataque_visita * fuerza_defensa_local * promedio_liga
+# --- MOTOR POISSON ---
+lambda_local = max((xg_favor_local * xg_contra_visita) / promedio_liga, 0.05)
+lambda_visita = max((xg_favor_visita * xg_contra_local) / promedio_liga, 0.05)
 
 max_goles = 8
 matriz_prob = np.zeros((max_goles, max_goles))
-
 for i in range(max_goles):
     for j in range(max_goles):
         matriz_prob[i, j] = poisson.pmf(i, lambda_local) * poisson.pmf(j, lambda_visita)
 
-prob_local = np.sum(np.tril(matriz_prob, -1))
-prob_empate = np.sum(np.diag(matriz_prob))
-prob_visita = np.sum(np.triu(matriz_prob, 1))
+prob_local = float(np.sum(np.tril(matriz_prob, -1)))
+prob_empate = float(np.sum(np.diag(matriz_prob)))
+prob_visita = float(np.sum(np.triu(matriz_prob, 1)))
 
-prob_under25 = matriz_prob[0,0] + matriz_prob[1,0] + matriz_prob[0,1] + matriz_prob[2,0] + matriz_prob[0,2] + matriz_prob[1,1]
+prob_under25 = float(matriz_prob[0,0] + matriz_prob[1,0] + matriz_prob[0,1] + matriz_prob[2,0] + matriz_prob[0,2] + matriz_prob[1,1])
 prob_over25 = 1.0 - prob_under25
 
-# Probabilidad de Ambos Anotan (BTTS)
-prob_btts_no = np.sum(matriz_prob[0, :]) + np.sum(matriz_prob[:, 0]) - matriz_prob[0, 0]
+prob_btts_no = float(np.sum(matriz_prob[0, :]) + np.sum(matriz_prob[:, 0]) - matriz_prob[0, 0])
 prob_btts_si = 1.0 - prob_btts_no
 
-# --- PANEL PRINCIPAL: RESUMEN AUTOMÁTICO DE CLUBES ---
-st.subheader(f"📊 Rendimiento arrastrado automáticamente: {equipo_local} vs {equipo_visita}")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric(f"⚽ {equipo_local} (Anote en Casa)", f"{xg_favor_local:.2f} goles/p", f"Recibe: {xg_contra_local:.2f}")
-c2.metric(f"✈️ {equipo_visita} (Anote Fuera)", f"{xg_favor_visita:.2f} goles/p", f"Recibe: {xg_contra_visita:.2f}")
-c3.metric(f"🎯 Proyección {equipo_local}", f"{lambda_local:.2f} Goles Esp.")
-c4.metric(f"🎯 Proyección {equipo_visita}", f"{lambda_visita:.2f} Goles Esp.")
+# --- ESTIMADOR DE CUOTAS BASE DE MERCADO (PARA QUE CAMBIEN SEGÚN EL PARTIDO) ---
+# Usamos los goles reales para simular cómo la casa de apuestas abre la línea con su margen (5%)
+l_casa_loc = max((row_loc['G_Home'] * row_vis['GA_Away']) / max(media_liga, 0.5), 0.2)
+l_casa_vis = max((row_vis['G_Away'] * row_loc['GA_Home']) / max(media_liga, 0.5), 0.2)
+m_casa = np.zeros((max_goles, max_goles))
+for i in range(max_goles):
+    for j in range(max_goles):
+        m_casa[i, j] = poisson.pmf(i, l_casa_loc) * poisson.pmf(j, l_casa_vis)
 
-st.info(f"💡 **Dato extra del modelo:** La probabilidad matemática de **Ambos Equipos Anotan (BTTS - Sí)** es del **{prob_btts_si*100:.1f}%** (Cuota justa: **{1/prob_btts_si:.2f}**).")
+margen_betano = 1.055  # 5.5% de comisión promedio de casa de apuestas
+c_sug_loc = round(max(1.05, 1 / (max(np.sum(np.tril(m_casa, -1)), 0.05) * margen_betano)), 2)
+c_sug_emp = round(max(1.05, 1 / (max(np.sum(np.diag(m_casa)), 0.05) * margen_betano)), 2)
+c_sug_vis = round(max(1.05, 1 / (max(np.sum(np.triu(m_casa, 1)), 0.05) * margen_betano)), 2)
 
-# --- TABLA DETECTORA DE VALOR ---
-st.subheader("🎯 Detector de Valor (Edge / +EV)")
+# --- 2. CUOTAS DE BETANO ---
+st.sidebar.header("🟠 2. Cuotas en Betano")
+st.sidebar.caption("Se pre-cargan cuotas estimadas para este partido. Pon las cuotas exactas de tu app Betano para detectar el Edge real:")
 
-mercados = [f"Gana {equipo_local} (1)", "Empate (X)", f"Gana {equipo_visita} (2)", "Más de 2.5 Goles (Over)", "Menos de 2.5 Goles (Under)"]
-probs_modelo = [prob_local, prob_empate, prob_visita, prob_over25, prob_under25]
-cuotas_casa = [cuota_local, cuota_empate, cuota_visita, cuota_over25, cuota_under25]
+cuota_local = st.sidebar.number_input(f"1 - Gana {equipo_local}", min_value=1.01, value=c_sug_loc, step=0.05)
+cuota_empate = st.sidebar.number_input("X - Empate", min_value=1.01, value=c_sug_emp, step=0.05)
+cuota_visita = st.sidebar.number_input(f"2 - Gana {equipo_visita}", min_value=1.01, value=c_sug_vis, step=0.05)
+cuota_over25 = st.sidebar.number_input("Más de 2.5 Goles (Over)", min_value=1.01, value=1.85, step=0.05)
+cuota_under25 = st.sidebar.number_input("Menos de 2.5 Goles (Under)", min_value=1.01, value=1.95, step=0.05)
+cuota_btts_si = st.sidebar.number_input("Ambos Anotan - SÍ (BTTS)", min_value=1.01, value=1.80, step=0.05)
+cuota_btts_no = st.sidebar.number_input("Ambos Anotan - NO", min_value=1.01, value=1.95, step=0.05)
+
+# --- PANEL PRINCIPAL ---
+st.subheader(f"📊 Datos Oficiales Understat: {equipo_local} (Local) vs {equipo_visita} (Visita)")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric(f"🏠 {equipo_local} xG a Favor", f"{row_loc['xG_Home']:.2f} xG/p", f"Goles reales: {row_loc['G_Home']:.2f}")
+col2.metric(f"🏠 {equipo_local} xGA Contra", f"{row_loc['xGA_Home']:.2f} xGA/p", f"Goles reales: {row_loc['GA_Home']:.2f}")
+col3.metric(f"✈️ {equipo_visita} xG a Favor", f"{row_vis['xG_Away']:.2f} xG/p", f"Goles reales: {row_vis['G_Away']:.2f}")
+col4.metric(f"✈️ {equipo_visita} xGA Contra", f"{row_vis['xGA_Away']:.2f} xGA/p", f"Goles reales: {row_vis['GA_Away']:.2f}")
+
+st.subheader("🎯 Detector de Valor vs. Cuotas Betano (Edge / +EV)")
+
+mercados = [
+    f"Gana {equipo_local} (1)",
+    "Empate (X)",
+    f"Gana {equipo_visita} (2)",
+    "Más de 2.5 Goles (Over)",
+    "Menos de 2.5 Goles (Under)",
+    "Ambos Equipos Anotan - SÍ",
+    "Ambos Equipos Anotan - NO"
+]
+probs_modelo = [prob_local, prob_empate, prob_visita, prob_over25, prob_under25, prob_btts_si, prob_btts_no]
+cuotas_casa = [cuota_local, cuota_empate, cuota_visita, cuota_over25, cuota_under25, cuota_btts_si, cuota_btts_no]
 
 datos_tabla = []
 for m, p, c in zip(mercados, probs_modelo, cuotas_casa):
     cuota_justa = 1 / p if p > 0 else 99.0
-    prob_implicita = 1 / c
     edge = (p * c) - 1
-    decision = "✅ APOSTAR (+EV)" if edge > 0.03 else "❌ Pasar (Sin valor)"
-    
     datos_tabla.append({
-        "Mercado": m,
-        "Prob. Modelo (%)": f"{p*100:.1f}%",
-        "Cuota Justa (Modelo)": round(cuota_justa, 2),
-        "Cuota Casa": c,
-        "Prob. Implícita Casa (%)": f"{prob_implicita*100:.1f}%",
+        "Mercado en Betano": m,
+        "Prob. Real Modelo (%)": f"{p*100:.1f}%",
+        "Cuota Mínima Justa": round(cuota_justa, 2),
+        "Cuota en Betano": c,
         "Edge / Ventaja (%)": f"{edge*100:.2f}%",
-        "Recomendación": decision
+        "Veredicto": "✅ APOSTAR (+EV)" if edge > 0.04 else "❌ No apostar (Sin valor)"
     })
 
-df_resultados = pd.DataFrame(datos_tabla)
-st.dataframe(df_resultados, use_container_width=True)
+st.dataframe(pd.DataFrame(datos_tabla), use_container_width=True)
 
-# --- MATRIZ VISUAL DE MARCADORES EXACTOS ---
+# --- MATRIZ DE MARCADOR EXACTO ---
 st.subheader("🔢 Matriz de Probabilidad de Marcador Exacto (%)")
 df_matriz = pd.DataFrame(matriz_prob[:6, :6] * 100, 
                          index=[f"{equipo_local} {i}" for i in range(6)], 
