@@ -4,17 +4,71 @@ import numpy as np
 from scipy.stats import poisson
 import requests
 
-st.set_page_config(page_title="Pro Bet Analyzer 4.1 - Multiligas Pro", layout="wide")
-st.title("⚽ Dashboard Automático Multiligas: Goles, Remates y Córners (v4.1)")
-st.markdown("Datos 100% automáticos desde **Football-Data.co.uk** con **Amortiguador Bayesiano** para máxima fiabilidad estadística.")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(
+    page_title="Pro Bet Analyzer 5.0 | Suite Cuantitativa",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- 1. CONFIGURACIÓN DE LIGAS Y FUENTES ABIERTAS ---
+# --- DISEÑO VISUAL PROFESIONAL (CSS PERSONALIZADO) ---
+st.markdown("""
+<style>
+    /* Encabezado Principal Ejecutivo */
+    .main-banner {
+        background: linear-gradient(135deg, #18181b 0%, #27272a 60%, #ea580c 100%);
+        padding: 24px 30px;
+        border-radius: 14px;
+        color: #ffffff;
+        margin-bottom: 24px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.12);
+        border-left: 8px solid #ff6b00;
+    }
+    .main-banner h1 {
+        color: #ffffff !important;
+        margin: 0;
+        font-size: 2.1rem;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+    }
+    .main-banner p {
+        color: #e4e4e7 !important;
+        margin: 6px 0 0 0;
+        font-size: 1.0rem;
+    }
+    /* Tarjetas de Métricas (KPIs) */
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-top: 4px solid #ff6b00;
+        padding: 16px 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+    }
+    /* Estilo de Pestañas (Tabs) */
+    button[data-baseweb="tab"] {
+        font-size: 16px !important;
+        font-weight: 700 !important;
+    }
+</style>
+
+<div class="main-banner">
+    <h1>⚽ PRO BET ANALYZER 5.0 <span style="color:#ff8c00;">| SUITE CUANTITATIVA</span></h1>
+    <p>Motor Predictivo de Distribución de Poisson • Amortiguador Bayesiano • Auditoría de Valor (+EV) vs. Betano</p>
+</div>
+""", unsafe_allow_html=True)
+
+# --- 1. CONFIGURACIÓN DE LIGAS Y FUENTES ABIERTAS (EUROPA + AMÉRICA) ---
 LIGAS_EUROPA_CSV = {
     "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
     "🇪🇸 LaLiga (España)": "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
     "🇩🇪 Bundesliga (Alemania)": "https://www.football-data.co.uk/mmz4281/2627/D1.csv",
-    "🇫🇷 Ligue 1 (Francia)": "https://www.football-data.co.uk/mmz4281/2627/F1.csv"
+    "🇫🇷 Ligue 1 (Francia)": "https://www.football-data.co.uk/mmz4281/2627/F1.csv",
+    "🇵🇹 Primeira Liga (Portugal)": "https://www.football-data.co.uk/mmz4281/2627/P1.csv",
+    "🇧🇪 Jupiler Pro League (Bélgica)": "https://www.football-data.co.uk/mmz4281/2627/B1.csv",
+    "🇹🇷 Süper Lig (Turquía)": "https://www.football-data.co.uk/mmz4281/2627/T1.csv"
 }
 
 LIGAS_AMERICA = {
@@ -70,20 +124,31 @@ def cargar_europa_football_data(url):
     for eq in equipos:
         h = df[df['HomeTeam'] == eq]
         a = df[df['AwayTeam'] == eq]
+        gf_h = float(h['FTHG'].mean()) if len(h) > 0 else 1.40
+        gf_a = float(a['FTAG'].mean()) if len(a) > 0 else 1.15
+        
+        # Si alguna liga menor no reporta tiros en algún partido, estima con base en su ofensiva
+        sh_h = float(h['HS'].dropna().mean()) if ('HS' in h and len(h['HS'].dropna()) > 0) else round(gf_h * 8.8, 1)
+        sh_a = float(a['AS'].dropna().mean()) if ('AS' in a and len(a['AS'].dropna()) > 0) else round(gf_a * 8.5, 1)
+        sot_h = float(h['HST'].dropna().mean()) if ('HST' in h and len(h['HST'].dropna()) > 0) else round(gf_h * 3.2, 1)
+        sot_a = float(a['AST'].dropna().mean()) if ('AST' in a and len(a['AST'].dropna()) > 0) else round(gf_a * 3.0, 1)
+        cor_h = float(h['HC'].dropna().mean()) if ('HC' in h and len(h['HC'].dropna()) > 0) else 5.4
+        cor_a = float(a['AC'].dropna().mean()) if ('AC' in a and len(a['AC'].dropna()) > 0) else 4.4
+
         filas.append({
             'Equipo': eq,
             'PJ_Home': int(len(h)),
             'PJ_Away': int(len(a)),
-            'GF_Home': float(h['FTHG'].mean()) if len(h) > 0 else 1.40,
+            'GF_Home': gf_h,
             'GC_Home': float(h['FTAG'].mean()) if len(h) > 0 else 1.15,
-            'GF_Away': float(a['FTAG'].mean()) if len(a) > 0 else 1.15,
+            'GF_Away': gf_a,
             'GC_Away': float(a['FTHG'].mean()) if len(a) > 0 else 1.40,
-            'Shots_Home': float(h['HS'].mean()) if 'HS' in h and len(h) > 0 else 13.5,
-            'Shots_Away': float(a['AS'].mean()) if 'AS' in a and len(a) > 0 else 11.0,
-            'SoT_Home': float(h['HST'].mean()) if 'HST' in h and len(h) > 0 else 4.8,
-            'SoT_Away': float(a['AST'].mean()) if 'AST' in a and len(a) > 0 else 3.9,
-            'Corners_Home': float(h['HC'].mean()) if 'HC' in h and len(h) > 0 else 5.5,
-            'Corners_Away': float(a['AC'].mean()) if 'AC' in a and len(a) > 0 else 4.4
+            'Shots_Home': sh_h,
+            'Shots_Away': sh_a,
+            'SoT_Home': sot_h,
+            'SoT_Away': sot_a,
+            'Corners_Home': cor_h,
+            'Corners_Away': cor_a
         })
     return pd.DataFrame(filas)
 
@@ -163,7 +228,7 @@ def cargar_america_datos(nombre_liga):
     return pd.DataFrame(filas)
 
 # --- BARRA LATERAL: SELECCIÓN DE LIGA Y CLUBES ---
-st.sidebar.header("🏆 1. Selección de Liga y Partido")
+st.sidebar.markdown("### 🏆 1. Competición y Encuentro")
 liga_elegida = st.sidebar.selectbox("Selecciona la Liga", TODAS_LAS_LIGAS)
 
 if liga_elegida in LIGAS_EUROPA_CSV:
@@ -173,14 +238,14 @@ else:
 
 lista_equipos = df_liga['Equipo'].tolist()
 
-equipo_local = st.sidebar.selectbox("🏠 Equipo Local", lista_equipos, index=0)
-equipo_visita = st.sidebar.selectbox("✈️ Equipo Visitante", lista_equipos, index=1 if len(lista_equipos) > 1 else 0)
+col_sb1, col_sb2 = st.sidebar.columns(2)
+equipo_local = col_sb1.selectbox("🏠 Local", lista_equipos, index=0)
+equipo_visita = col_sb2.selectbox("✈️ Visita", lista_equipos, index=1 if len(lista_equipos) > 1 else 0)
 
-# --- INTERRUPTOR DE AMORTIGUADOR BAYESIANO (MUESTRA PEQUEÑA) ---
 usar_amortiguador = st.sidebar.checkbox(
-    "🛡️ Activar Amortiguador de Pocos Partidos (Corrección Bayesiana)", 
+    "🛡️ Amortiguador Bayesiano (< 6 PJ)", 
     value=True,
-    help="Suaviza promedios extremos cuando un club lleva menos de 6 partidos de local o visitante, mezclándolos con la media de la liga."
+    help="Suaviza promedios extremos cuando un club lleva menos de 6 partidos de local o visitante, ponderándolos con la media de la liga."
 )
 
 row_loc = df_liga[df_liga['Equipo'] == equipo_local].iloc[0]
@@ -195,7 +260,6 @@ media_goles_liga = (media_gf_home + media_gf_away) / 2.0
 pj_loc = int(row_loc['PJ_Home'])
 pj_vis = int(row_vis['PJ_Away'])
 
-# Peso de confianza: alcanza 100% a partir de 6 partidos en esa condición
 peso_loc = min(pj_loc / 6.0, 1.0) if usar_amortiguador else 1.0
 peso_vis = min(pj_vis / 6.0, 1.0) if usar_amortiguador else 1.0
 
@@ -204,9 +268,8 @@ gc_loc_calc = (peso_loc * float(row_loc['GC_Home'])) + ((1.0 - peso_loc) * media
 gf_vis_calc = (peso_vis * float(row_vis['GF_Away'])) + ((1.0 - peso_vis) * media_gf_away)
 gc_vis_calc = (peso_vis * float(row_vis['GC_Away'])) + ((1.0 - peso_vis) * media_gc_away)
 
-# --- PANEL DESPLEGABLE PARA VER O AJUSTAR DATOS ARRASTRADOS ---
-with st.sidebar.expander("⚙️ Ver / Ajustar promedios arrastrados (xG, Remates, Córners)"):
-    st.caption(f"Muestra detectada: {equipo_local} ({pj_loc} PJ Casa) | {equipo_visita} ({pj_vis} PJ Visita).")
+with st.sidebar.expander("⚙️ Auditoría / Ajuste Manual de Datos"):
+    st.caption(f"Muestra: {equipo_local} ({pj_loc} PJ Casa) | {equipo_visita} ({pj_vis} PJ Visita)")
     xg_favor_local = st.number_input("Goles/xG a Favor (Local)", min_value=0.1, max_value=5.0, value=round(gf_loc_calc, 2), step=0.05)
     xg_contra_local = st.number_input("Goles/xG en Contra (Local)", min_value=0.1, max_value=5.0, value=round(gc_loc_calc, 2), step=0.05)
     xg_favor_visita = st.number_input("Goles/xG a Favor (Visita)", min_value=0.1, max_value=5.0, value=round(gf_vis_calc, 2), step=0.05)
@@ -221,7 +284,7 @@ with st.sidebar.expander("⚙️ Ver / Ajustar promedios arrastrados (xG, Remate
     corners_local = st.number_input("Córners Promedio (Local)", min_value=0.5, max_value=15.0, value=round(float(row_loc['Corners_Home']), 1), step=0.1)
     corners_visita = st.number_input("Córners Promedio (Visita)", min_value=0.5, max_value=15.0, value=round(float(row_vis['Corners_Away']), 1), step=0.1)
 
-# --- MOTOR MATEMÁTICO POISSON (GOLES, REMATES Y CÓRNERS) ---
+# --- MOTOR MATEMÁTICO POISSON ---
 lam_loc = max((xg_favor_local * xg_contra_visita) / max(promedio_liga, 0.5), 0.1)
 lam_vis = max((xg_favor_visita * xg_contra_local) / max(promedio_liga, 0.5), 0.1)
 
@@ -235,31 +298,39 @@ prob_x = float(np.sum(np.diag(matriz_prob)))
 prob_2 = float(np.sum(np.triu(matriz_prob, 1)))
 prob_under25 = float(matriz_prob[0,0] + matriz_prob[1,0] + matriz_prob[0,1] + matriz_prob[2,0] + matriz_prob[0,2] + matriz_prob[1,1])
 prob_over25 = 1.0 - prob_under25
-prob_btts_si = 1.0 - float(np.sum(matriz_prob[0, :]) + np.sum(matriz_prob[:, 0]) - matriz_prob[0, 0])
+prob_btts_no = float(np.sum(matriz_prob[0, :]) + np.sum(matriz_prob[:, 0]) - matriz_prob[0, 0])
+prob_btts_si = 1.0 - prob_btts_no
 
 # --- CUOTAS Y LÍNEAS DE BETANO ---
-st.sidebar.header("🟠 2. Cuotas y Líneas en Betano")
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🟠 2. Cuotas en Betano (Goles)")
 margen = 1.055
 c_sug_1 = round(max(1.05, 1 / (max(prob_1, 0.05) * margen)), 2)
 c_sug_x = round(max(1.05, 1 / (max(prob_x, 0.05) * margen)), 2)
 c_sug_2 = round(max(1.05, 1 / (max(prob_2, 0.05) * margen)), 2)
 
-cuota_1 = st.sidebar.number_input(f"1 - Gana {equipo_local}", min_value=1.01, value=c_sug_1, step=0.05)
-cuota_x = st.sidebar.number_input("X - Empate", min_value=1.01, value=c_sug_x, step=0.05)
-cuota_2 = st.sidebar.number_input(f"2 - Gana {equipo_visita}", min_value=1.01, value=c_sug_2, step=0.05)
-cuota_over25 = st.sidebar.number_input("Cuota Más de 2.5 Goles", min_value=1.01, value=1.85, step=0.05)
-cuota_btts = st.sidebar.number_input("Cuota Ambos Anotan - SÍ", min_value=1.01, value=1.80, step=0.05)
+c_sb1, c_sb2, c_sb3 = st.sidebar.columns(3)
+cuota_1 = c_sb1.number_input("Local (1)", min_value=1.01, value=c_sug_1, step=0.05)
+cuota_x = c_sb2.number_input("Empate (X)", min_value=1.01, value=c_sug_x, step=0.05)
+cuota_2 = c_sb3.number_input("Visita (2)", min_value=1.01, value=c_sug_2, step=0.05)
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("📏 Líneas Especiales Betano")
-linea_remates = st.sidebar.number_input("Línea Remates Totales", min_value=10.5, max_value=40.5, value=24.5, step=1.0)
-cuota_over_rem = st.sidebar.number_input("Cuota Over Remates Totales", min_value=1.01, value=1.85, step=0.05)
+c_sb4, c_sb5 = st.sidebar.columns(2)
+cuota_over25 = c_sb4.number_input("Over 2.5 Goles", min_value=1.01, value=1.85, step=0.05)
+cuota_under25 = c_sb5.number_input("Under 2.5 Goles", min_value=1.01, value=1.95, step=0.05)
 
-linea_puerta = st.sidebar.number_input("Línea Remates a Puerta", min_value=3.5, max_value=20.5, value=8.5, step=1.0)
-cuota_over_pue = st.sidebar.number_input("Cuota Over Remates a Puerta", min_value=1.01, value=1.85, step=0.05)
+c_sb6, c_sb7 = st.sidebar.columns(2)
+cuota_btts_si = c_sb6.number_input("Ambos Anotan SÍ", min_value=1.01, value=1.80, step=0.05)
+cuota_btts_no = c_sb7.number_input("Ambos Anotan NO", min_value=1.01, value=1.95, step=0.05)
 
-linea_corners = st.sidebar.number_input("Línea Córners Totales", min_value=4.5, max_value=20.5, value=9.5, step=1.0)
-cuota_over_cor = st.sidebar.number_input("Cuota Over Córners", min_value=1.01, value=1.85, step=0.05)
+with st.sidebar.expander("📏 Cuotas y Líneas de Remates / Córners"):
+    linea_remates = st.number_input("Línea Remates Totales", min_value=10.5, max_value=40.5, value=24.5, step=1.0)
+    cuota_over_rem = st.number_input("Cuota Over Remates", min_value=1.01, value=1.85, step=0.05)
+    
+    linea_puerta = st.number_input("Línea Remates a Puerta", min_value=3.5, max_value=20.5, value=8.5, step=1.0)
+    cuota_over_pue = st.number_input("Cuota Over a Puerta", min_value=1.01, value=1.85, step=0.05)
+    
+    linea_corners = st.number_input("Línea Córners Totales", min_value=4.5, max_value=20.5, value=9.5, step=1.0)
+    cuota_over_cor = st.number_input("Cuota Over Córners", min_value=1.01, value=1.85, step=0.05)
 
 # Cálculos Poisson para Remates y Córners
 lam_remates = remates_local + remates_visita
@@ -271,66 +342,87 @@ prob_over_puerta = 1.0 - sum(poisson.pmf(k, lam_puerta) for k in range(int(linea
 lam_corners = corners_local + corners_visita
 prob_over_corners = 1.0 - sum(poisson.pmf(k, lam_corners) for k in range(int(linea_corners) + 1))
 
-# --- PANEL PRINCIPAL ---
-st.subheader(f"📊 Proyecciones Automáticas ({liga_elegida}): {equipo_local} vs {equipo_visita}")
+# --- PANEL PRINCIPAL: CABECERA DEL PARTIDO Y TARJETAS KPI ---
+st.markdown(f"### 🏟️ {equipo_local} vs. {equipo_visita} <span style='font-size:16px; color:#71717a; font-weight:normal;'>({liga_elegida})</span>", unsafe_allow_html=True)
 
 if usar_amortiguador and (pj_loc < 6 or pj_vis < 6):
-    st.info(f"🛡️ **Amortiguador Bayesiano Activo:** Como la muestra es corta ({equipo_local}: {pj_loc} PJ en casa | {equipo_visita}: {pj_vis} PJ fuera), se suavizaron los extremos con la media de la liga ({media_goles_liga:.2f} goles) para evitar proyecciones infladas.")
+    st.caption(f"🛡️ **Amortiguador Bayesiano Activo:** Muestra ponderada con la media de la liga ({media_goles_liga:.2f} goles) por pocos partidos jugados ({equipo_local}: {pj_loc} PJ Casa | {equipo_visita}: {pj_vis} PJ Visita).")
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("⚽ Goles Esperados", f"{lam_loc:.2f} vs {lam_vis:.2f}", f"Total: {lam_loc+lam_vis:.2f} goles")
-c2.metric("🎯 Remates Totales Esp.", f"{lam_remates:.1f} tiros", f"{remates_local:.1f} L + {remates_visita:.1f} V")
-c3.metric("🥅 Remates a Puerta Esp.", f"{lam_puerta:.1f} a puerta", f"{puerta_local:.1f} L + {puerta_visita:.1f} V")
-c4.metric("⛳ Córners Esperados", f"{lam_corners:.1f} córners", f"{corners_local:.1f} L + {corners_visita:.1f} V")
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("⚽ Proyección de Goles (xG)", f"{lam_loc:.2f} - {lam_vis:.2f}", f"Total esperado: {lam_loc+lam_vis:.2f} goles")
+k2.metric("🎯 Remates Totales Esp.", f"{lam_remates:.1f} tiros", f"{remates_local:.1f} Local + {remates_visita:.1f} Visita")
+k3.metric("🥅 Remates a Puerta Esp.", f"{lam_puerta:.1f} al arco", f"{puerta_local:.1f} Local + {puerta_visita:.1f} Visita")
+k4.metric("⛳ Córners Proyectados", f"{lam_corners:.1f} esquinas", f"{corners_local:.1f} Local + {corners_visita:.1f} Visita")
 
-# --- TABLA 1: GOLES Y RESULTADO ---
-st.subheader("🎯 1. Detector de Valor: Resultado y Goles")
-mercados_g = [f"Gana {equipo_local} (1)", "Empate (X)", f"Gana {equipo_visita} (2)", "Más de 2.5 Goles (Over)", "Ambos Equipos Anotan - SÍ"]
-probs_g = [prob_1, prob_x, prob_2, prob_over25, prob_btts_si]
-cuotas_g = [cuota_1, cuota_x, cuota_2, cuota_over25, cuota_btts]
+st.markdown("<br>", unsafe_allow_html=True)
 
-filas_g = []
-for m, p, c in zip(mercados_g, probs_g, cuotas_g):
-    justa = 1 / p if p > 0 else 99.0
-    edge = (p * c) - 1
-    filas_g.append({
-        "Mercado en Betano": m,
-        "Prob. Modelo (%)": f"{p*100:.1f}%",
-        "Cuota Mínima Justa": round(justa, 2),
-        "Cuota Betano": c,
-        "Edge / Ventaja (%)": f"{edge*100:.2f}%",
-        "Recomendación": "✅ APOSTAR (+EV)" if edge > 0.04 else "❌ Pasar (Sin valor)"
-    })
-st.dataframe(pd.DataFrame(filas_g), use_container_width=True)
+# Función para colorear filas con Valor (+EV)
+def resaltar_valor(fila):
+    if "✅ APOSTAR" in str(fila["Veredicto"]):
+        return ['background-color: rgba(22, 163, 74, 0.14); font-weight: 600;'] * len(fila)
+    return [''] * len(fila)
 
-# --- TABLA 2: REMATES, REMATES A PUERTA Y CÓRNERS ---
-st.subheader("🎯 2. Detector de Valor: Remates y Córners")
-mercados_e = [
-    (f"Más de {linea_remates} Remates Totales (Over)", prob_over_remates, cuota_over_rem),
-    (f"Menos de {linea_remates} Remates Totales (Under)", 1.0 - prob_over_remates, 1.85),
-    (f"Más de {linea_puerta} Remates a Puerta (Over)", prob_over_puerta, cuota_over_pue),
-    (f"Menos de {linea_puerta} Remates a Puerta (Under)", 1.0 - prob_over_puerta, 1.85),
-    (f"Más de {linea_corners} Córners Totales (Over)", prob_over_corners, cuota_over_cor),
-    (f"Menos de {linea_corners} Córners Totales (Under)", 1.0 - prob_over_corners, 1.85),
-]
+# --- NAVEGACIÓN POR PESTAÑAS (TABS) ---
+tab1, tab2, tab3 = st.tabs([
+    "🎯 1. Mercados de Goles y 1X2", 
+    "⛳ 2. Mercados de Remates y Córners", 
+    "🔢 3. Matriz Exacta de Poisson"
+])
 
-filas_e = []
-for m, p, c in mercados_e:
-    justa = 1 / p if p > 0 else 99.0
-    edge = (p * c) - 1
-    filas_e.append({
-        "Mercado Especial": m,
-        "Prob. Modelo (%)": f"{p*100:.1f}%",
-        "Cuota Mínima Justa": round(justa, 2),
-        "Cuota Betano": c,
-        "Edge / Ventaja (%)": f"{edge*100:.2f}%",
-        "Recomendación": "✅ APOSTAR (+EV)" if edge > 0.04 else "❌ Pasar (Sin valor)"
-    })
-st.dataframe(pd.DataFrame(filas_e), use_container_width=True)
+with tab1:
+    mercados_g = [
+        (f"Gana {equipo_local} (1)", prob_1, cuota_1),
+        ("Empate (X)", prob_x, cuota_x),
+        (f"Gana {equipo_visita} (2)", prob_2, cuota_2),
+        ("Más de 2.5 Goles (Over)", prob_over25, cuota_over25),
+        ("Menos de 2.5 Goles (Under)", prob_under25, cuota_under25),
+        ("Ambos Equipos Anotan - SÍ", prob_btts_si, cuota_btts_si),
+        ("Ambos Equipos Anotan - NO", prob_btts_no, cuota_btts_no)
+    ]
+    filas_g = []
+    for m, p, c in mercados_g:
+        justa = 1 / p if p > 0 else 99.0
+        edge = (p * c) - 1
+        filas_g.append({
+            "Mercado en Betano": m,
+            "Prob. Real (%)": f"{p*100:.1f}%",
+            "Cuota Mínima Justa": f"{justa:.2f}",
+            "Cuota Betano": f"{c:.2f}",
+            "Edge / Ventaja (%)": f"{edge*100:+.2f}%",
+            "Veredicto": "✅ APOSTAR (+EV)" if edge > 0.04 else "❌ Pasar (Sin valor)"
+        })
+    df_g = pd.DataFrame(filas_g)
+    st.dataframe(df_g.style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
 
-# --- MATRIZ DE MARCADOR EXACTO ---
-st.subheader("🔢 Matriz de Probabilidad de Marcador Exacto (%)")
-df_matriz = pd.DataFrame(matriz_prob[:6, :6] * 100, 
-                         index=[f"{equipo_local} {i}" for i in range(6)], 
-                         columns=[f"{equipo_visita} {j}" for j in range(6)])
-st.dataframe(df_matriz.style.format("{:.1f}%").background_gradient(cmap="Greens"), use_container_width=True)
+with tab2:
+    mercados_e = [
+        (f"Más de {linea_remates} Remates Totales (Over)", prob_over_remates, cuota_over_rem),
+        (f"Menos de {linea_remates} Remates Totales (Under)", 1.0 - prob_over_remates, 1.85),
+        (f"Más de {linea_puerta} Remates a Puerta (Over)", prob_over_puerta, cuota_over_pue),
+        (f"Menos de {linea_puerta} Remates a Puerta (Under)", 1.0 - prob_over_puerta, 1.85),
+        (f"Más de {linea_corners} Córners Totales (Over)", prob_over_corners, cuota_over_cor),
+        (f"Menos de {linea_corners} Córners Totales (Under)", 1.0 - prob_over_corners, 1.85),
+    ]
+    filas_e = []
+    for m, p, c in mercados_e:
+        justa = 1 / p if p > 0 else 99.0
+        edge = (p * c) - 1
+        filas_e.append({
+            "Mercado Especial": m,
+            "Prob. Real (%)": f"{p*100:.1f}%",
+            "Cuota Mínima Justa": f"{justa:.2f}",
+            "Cuota Betano": f"{c:.2f}",
+            "Edge / Ventaja (%)": f"{edge*100:+.2f}%",
+            "Veredicto": "✅ APOSTAR (+EV)" if edge > 0.04 else "❌ Pasar (Sin valor)"
+        })
+    df_e = pd.DataFrame(filas_e)
+    st.dataframe(df_e.style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+
+with tab3:
+    st.caption("Probabilidad matemática exacta para cada marcador final entre 0 y 5 goles por equipo:")
+    df_matriz = pd.DataFrame(
+        matriz_prob[:6, :6] * 100, 
+        index=[f"🏠 {equipo_local} ({i})" for i in range(6)], 
+        columns=[f"✈️ {equipo_visita} ({j})" for j in range(6)]
+    )
+    st.dataframe(df_matriz.style.format("{:.1f}%").background_gradient(cmap="YlOrBr"), use_container_width=True)
