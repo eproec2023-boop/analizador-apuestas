@@ -4,9 +4,9 @@ import numpy as np
 from scipy.stats import poisson
 import requests
 
-st.set_page_config(page_title="Pro Bet Analyzer 4.0 - Multiligas Automático", layout="wide")
-st.title("⚽ Dashboard Automático Multiligas: Goles, Remates y Córners")
-st.markdown("Selecciona la **Liga** y los **Clubes** en las listas desplegables. El sistema extrae datos reales de fuentes abiertas sin bloqueos.")
+st.set_page_config(page_title="Pro Bet Analyzer 4.1 - Multiligas Pro", layout="wide")
+st.title("⚽ Dashboard Automático Multiligas: Goles, Remates y Córners (v4.1)")
+st.markdown("Datos 100% automáticos desde **Football-Data.co.uk** con **Amortiguador Bayesiano** para máxima fiabilidad estadística.")
 
 # --- 1. CONFIGURACIÓN DE LIGAS Y FUENTES ABIERTAS ---
 LIGAS_EUROPA_CSV = {
@@ -58,7 +58,7 @@ def cargar_europa_football_data(url):
     try:
         df = pd.read_csv(url)
         df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-        if len(df) < 10:
+        if len(df) < 5:
             raise ValueError("Pocos partidos, usar respaldo")
     except Exception:
         url_backup = url.replace("/2627/", "/2526/")
@@ -72,6 +72,8 @@ def cargar_europa_football_data(url):
         a = df[df['AwayTeam'] == eq]
         filas.append({
             'Equipo': eq,
+            'PJ_Home': int(len(h)),
+            'PJ_Away': int(len(a)),
             'GF_Home': float(h['FTHG'].mean()) if len(h) > 0 else 1.40,
             'GC_Home': float(h['FTAG'].mean()) if len(h) > 0 else 1.15,
             'GF_Away': float(a['FTAG'].mean()) if len(a) > 0 else 1.15,
@@ -88,11 +90,10 @@ def cargar_europa_football_data(url):
 @st.cache_data(ttl=3600)
 def cargar_america_datos(nombre_liga):
     info = LIGAS_AMERICA[nombre_liga]
-    # 1. Intentar desde CSV abierto de Football-Data (para México y MLS)
     if info["csv_extra"]:
         try:
             df = pd.read_csv(info["csv_extra"])
-            df = df.dropna(subset=['Home', 'Away', 'HG', 'AG']).tail(250)
+            df = df.dropna(subset=['Home', 'Away', 'HG', 'AG']).tail(180)
             equipos = sorted(df['Home'].unique())
             filas = []
             for eq in equipos:
@@ -102,6 +103,8 @@ def cargar_america_datos(nombre_liga):
                 gf_a = float(a['AG'].mean()) if len(a) > 0 else 1.15
                 filas.append({
                     'Equipo': eq,
+                    'PJ_Home': int(len(h)),
+                    'PJ_Away': int(len(a)),
                     'GF_Home': gf_h,
                     'GC_Home': float(h['AG'].mean()) if len(h) > 0 else 1.15,
                     'GF_Away': gf_a,
@@ -118,7 +121,6 @@ def cargar_america_datos(nombre_liga):
         except Exception:
             pass
 
-    # 2. Intentar desde API pública de clasificaciones de ESPN (Para Colombia, MLS, Liga MX)
     try:
         url_espn = f"https://site.api.espn.com/apis/v2/sports/soccer/{info['espn_code']}/standings"
         r = requests.get(url_espn, timeout=6).json()
@@ -127,11 +129,13 @@ def cargar_america_datos(nombre_liga):
         for item in entries:
             nombre = item['team']['displayName']
             stats = {s['name']: s['value'] for s in item['stats']}
-            pj = max(stats.get('gamesPlayed', 10), 1)
+            pj = max(int(stats.get('gamesPlayed', 10)), 1)
             gf = stats.get('pointsFor', 13) / pj
             gc = stats.get('pointsAgainst', 13) / pj
             filas.append({
                 'Equipo': nombre,
+                'PJ_Home': max(pj // 2, 1),
+                'PJ_Away': max(pj // 2, 1),
                 'GF_Home': round(gf * 1.15, 2),
                 'GC_Home': round(gc * 0.85, 2),
                 'GF_Away': round(gf * 0.85, 2),
@@ -148,11 +152,10 @@ def cargar_america_datos(nombre_liga):
     except Exception:
         pass
 
-    # 3. Respaldo local garantizado
     filas = []
     for eq in sorted(info["equipos_base"]):
         filas.append({
-            'Equipo': eq,
+            'Equipo': eq, 'PJ_Home': 6, 'PJ_Away': 6,
             'GF_Home': 1.45, 'GC_Home': 1.05, 'GF_Away': 1.10, 'GC_Away': 1.40,
             'Shots_Home': 13.5, 'Shots_Away': 10.5, 'SoT_Home': 4.6, 'SoT_Away': 3.6,
             'Corners_Home': 5.4, 'Corners_Away': 4.3
@@ -173,17 +176,41 @@ lista_equipos = df_liga['Equipo'].tolist()
 equipo_local = st.sidebar.selectbox("🏠 Equipo Local", lista_equipos, index=0)
 equipo_visita = st.sidebar.selectbox("✈️ Equipo Visitante", lista_equipos, index=1 if len(lista_equipos) > 1 else 0)
 
+# --- INTERRUPTOR DE AMORTIGUADOR BAYESIANO (MUESTRA PEQUEÑA) ---
+usar_amortiguador = st.sidebar.checkbox(
+    "🛡️ Activar Amortiguador de Pocos Partidos (Corrección Bayesiana)", 
+    value=True,
+    help="Suaviza promedios extremos cuando un club lleva menos de 6 partidos de local o visitante, mezclándolos con la media de la liga."
+)
+
 row_loc = df_liga[df_liga['Equipo'] == equipo_local].iloc[0]
 row_vis = df_liga[df_liga['Equipo'] == equipo_visita].iloc[0]
-media_goles_liga = float((df_liga['GF_Home'].mean() + df_liga['GF_Away'].mean()) / 2)
+
+media_gf_home = float(df_liga['GF_Home'].mean())
+media_gc_home = float(df_liga['GC_Home'].mean())
+media_gf_away = float(df_liga['GF_Away'].mean())
+media_gc_away = float(df_liga['GC_Away'].mean())
+media_goles_liga = (media_gf_home + media_gf_away) / 2.0
+
+pj_loc = int(row_loc['PJ_Home'])
+pj_vis = int(row_vis['PJ_Away'])
+
+# Peso de confianza: alcanza 100% a partir de 6 partidos en esa condición
+peso_loc = min(pj_loc / 6.0, 1.0) if usar_amortiguador else 1.0
+peso_vis = min(pj_vis / 6.0, 1.0) if usar_amortiguador else 1.0
+
+gf_loc_calc = (peso_loc * float(row_loc['GF_Home'])) + ((1.0 - peso_loc) * media_gf_home)
+gc_loc_calc = (peso_loc * float(row_loc['GC_Home'])) + ((1.0 - peso_loc) * media_gc_home)
+gf_vis_calc = (peso_vis * float(row_vis['GF_Away'])) + ((1.0 - peso_vis) * media_gf_away)
+gc_vis_calc = (peso_vis * float(row_vis['GC_Away'])) + ((1.0 - peso_vis) * media_gc_away)
 
 # --- PANEL DESPLEGABLE PARA VER O AJUSTAR DATOS ARRASTRADOS ---
 with st.sidebar.expander("⚙️ Ver / Ajustar promedios arrastrados (xG, Remates, Córners)"):
-    st.caption("Se cargan automáticamente de la base de datos. Si deseas usar tus datos de Understat/FBref, edítalos aquí:")
-    xg_favor_local = st.number_input("Goles/xG a Favor (Local)", min_value=0.1, max_value=5.0, value=round(float(row_loc['GF_Home']), 2), step=0.05)
-    xg_contra_local = st.number_input("Goles/xG en Contra (Local)", min_value=0.1, max_value=5.0, value=round(float(row_loc['GC_Home']), 2), step=0.05)
-    xg_favor_visita = st.number_input("Goles/xG a Favor (Visita)", min_value=0.1, max_value=5.0, value=round(float(row_vis['GF_Away']), 2), step=0.05)
-    xg_contra_visita = st.number_input("Goles/xG en Contra (Visita)", min_value=0.1, max_value=5.0, value=round(float(row_vis['GC_Away']), 2), step=0.05)
+    st.caption(f"Muestra detectada: {equipo_local} ({pj_loc} PJ Casa) | {equipo_visita} ({pj_vis} PJ Visita).")
+    xg_favor_local = st.number_input("Goles/xG a Favor (Local)", min_value=0.1, max_value=5.0, value=round(gf_loc_calc, 2), step=0.05)
+    xg_contra_local = st.number_input("Goles/xG en Contra (Local)", min_value=0.1, max_value=5.0, value=round(gc_loc_calc, 2), step=0.05)
+    xg_favor_visita = st.number_input("Goles/xG a Favor (Visita)", min_value=0.1, max_value=5.0, value=round(gf_vis_calc, 2), step=0.05)
+    xg_contra_visita = st.number_input("Goles/xG en Contra (Visita)", min_value=0.1, max_value=5.0, value=round(gc_vis_calc, 2), step=0.05)
     promedio_liga = st.number_input("Promedio Goles de la Liga", min_value=0.5, max_value=3.0, value=round(media_goles_liga, 2), step=0.05)
     
     st.markdown("---")
@@ -246,6 +273,10 @@ prob_over_corners = 1.0 - sum(poisson.pmf(k, lam_corners) for k in range(int(lin
 
 # --- PANEL PRINCIPAL ---
 st.subheader(f"📊 Proyecciones Automáticas ({liga_elegida}): {equipo_local} vs {equipo_visita}")
+
+if usar_amortiguador and (pj_loc < 6 or pj_vis < 6):
+    st.info(f"🛡️ **Amortiguador Bayesiano Activo:** Como la muestra es corta ({equipo_local}: {pj_loc} PJ en casa | {equipo_visita}: {pj_vis} PJ fuera), se suavizaron los extremos con la media de la liga ({media_goles_liga:.2f} goles) para evitar proyecciones infladas.")
+
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("⚽ Goles Esperados", f"{lam_loc:.2f} vs {lam_vis:.2f}", f"Total: {lam_loc+lam_vis:.2f} goles")
 c2.metric("🎯 Remates Totales Esp.", f"{lam_remates:.1f} tiros", f"{remates_local:.1f} L + {remates_visita:.1f} V")
