@@ -7,7 +7,7 @@ import requests
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 7.1 | Pre-Partido & Live Radar",
+    page_title="Pro Bet Analyzer 7.2 | Pre-Partido & Live Radar",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -51,7 +51,7 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 7.1 <span style="color:#ff8c00;">| PRE-MATCH & LIVE RADAR</span></h1>
+<h1>🏆 PRO BET ANALYZER 7.2 <span style="color:#ff8c00;">| PRE-MATCH & LIVE RADAR</span></h1>
 <p>Motor Predictivo de Distribución de Poisson • Amortiguador Bayesiano • Mapa de Calor y Auditoría En Vivo (+EV) vs. Betano</p>
 </div>
 """, unsafe_allow_html=True)
@@ -283,7 +283,7 @@ EQUIPOS_NHL_BASE = [
     "New York Rangers", "Carolina Hurricanes", "New Jersey Devils", "New York Islanders",
     "Dallas Stars", "Colorado Avalanche", "Winnipeg Jets", "Nashville Predators",
     "Edmonton Oilers", "Vancouver Canucks", "Vegas Golden Knights", "Los Angeles Kings",
-    "Minnesota Wild", "St. Louis Blues", "Utah Hockey Club", "Calgary Flames",
+    "Minnesota Wild", "St. Louis Blues", "Utah Mammoth", "Calgary Flames",
     "Washington Capitals", "Pittsburgh Penguins", "Philadelphia Flyers", "Columbus Blue Jackets",
     "Detroit Red Wings", "Buffalo Sabres", "Ottawa Senators", "Montreal Canadiens",
     "Seattle Kraken", "Anaheim Ducks", "Chicago Blackhawks", "San Jose Sharks"
@@ -404,21 +404,23 @@ if deporte_activo == "⚽ Fútbol (11 Ligas Mundiales)":
     gf_vis_calc = (peso_vis * float(row_vis['GF_Away'])) + ((1.0 - peso_vis) * media_gf_away)
     gc_vis_calc = (peso_vis * float(row_vis['GC_Away'])) + ((1.0 - peso_vis) * media_gc_away)
 
+    k_fut = f"{liga_elegida}_{equipo_local}_{equipo_visita}_{usar_amortiguador}"
+
     with st.sidebar.expander("⚙️ Auditoría / Ajuste Manual de Datos"):
         st.caption(f"Muestra: {equipo_local} ({pj_loc} PJ Casa) | {equipo_visita} ({pj_vis} PJ Visita)")
-        xg_favor_local = st.number_input("Goles/xG a Favor (Local)", min_value=0.1, max_value=5.0, value=round(gf_loc_calc, 2), step=0.05)
-        xg_contra_local = st.number_input("Goles/xG en Contra (Local)", min_value=0.1, max_value=5.0, value=round(gc_loc_calc, 2), step=0.05)
-        xg_favor_visita = st.number_input("Goles/xG a Favor (Visita)", min_value=0.1, max_value=5.0, value=round(gf_vis_calc, 2), step=0.05)
-        xg_contra_visita = st.number_input("Goles/xG en Contra (Visita)", min_value=0.1, max_value=5.0, value=round(gc_vis_calc, 2), step=0.05)
-        promedio_liga = st.number_input("Promedio Goles de la Liga", min_value=0.5, max_value=3.0, value=round(media_goles_liga, 2), step=0.05)
+        xg_favor_local = st.number_input("Goles/xG a Favor (Local)", min_value=0.1, max_value=5.0, value=round(gf_loc_calc, 2), step=0.05, key=f"f1_{k_fut}")
+        xg_contra_local = st.number_input("Goles/xG en Contra (Local)", min_value=0.1, max_value=5.0, value=round(gc_loc_calc, 2), step=0.05, key=f"f2_{k_fut}")
+        xg_favor_visita = st.number_input("Goles/xG a Favor (Visita)", min_value=0.1, max_value=5.0, value=round(gf_vis_calc, 2), step=0.05, key=f"f3_{k_fut}")
+        xg_contra_visita = st.number_input("Goles/xG en Contra (Visita)", min_value=0.1, max_value=5.0, value=round(gc_vis_calc, 2), step=0.05, key=f"f4_{k_fut}")
+        promedio_liga = st.number_input("Promedio Goles de la Liga", min_value=0.5, max_value=3.0, value=round(media_goles_liga, 2), step=0.05, key=f"f5_{k_fut}")
         
         st.markdown("---")
-        remates_local = st.number_input("Remates Totales (Local)", min_value=1.0, max_value=30.0, value=round(float(row_loc['Shots_Home']), 1), step=0.5)
-        remates_visita = st.number_input("Remates Totales (Visita)", min_value=1.0, max_value=30.0, value=round(float(row_vis['Shots_Away']), 1), step=0.5)
-        puerta_local = st.number_input("Remates a Puerta (Local)", min_value=0.5, max_value=15.0, value=round(float(row_loc['SoT_Home']), 1), step=0.1)
-        puerta_visita = st.number_input("Remates a Puerta (Visita)", min_value=0.5, max_value=15.0, value=round(float(row_vis['SoT_Away']), 1), step=0.1)
-        corners_local = st.number_input("Córners Promedio (Local)", min_value=0.5, max_value=15.0, value=round(float(row_loc['Corners_Home']), 1), step=0.1)
-        corners_visita = st.number_input("Córners Promedio (Visita)", min_value=0.5, max_value=15.0, value=round(float(row_vis['Corners_Away']), 1), step=0.1)
+        remates_local = st.number_input("Remates Totales (Local)", min_value=1.0, max_value=30.0, value=round(float(row_loc['Shots_Home']), 1), step=0.5, key=f"f6_{k_fut}")
+        remates_visita = st.number_input("Remates Totales (Visita)", min_value=1.0, max_value=30.0, value=round(float(row_vis['Shots_Away']), 1), step=0.5, key=f"f7_{k_fut}")
+        puerta_local = st.number_input("Remates a Puerta (Local)", min_value=0.5, max_value=15.0, value=round(float(row_loc['SoT_Home']), 1), step=0.1, key=f"f8_{k_fut}")
+        puerta_visita = st.number_input("Remates a Puerta (Visita)", min_value=0.5, max_value=15.0, value=round(float(row_vis['SoT_Away']), 1), step=0.1, key=f"f9_{k_fut}")
+        corners_local = st.number_input("Córners Promedio (Local)", min_value=0.5, max_value=15.0, value=round(float(row_loc['Corners_Home']), 1), step=0.1, key=f"f10_{k_fut}")
+        corners_visita = st.number_input("Córners Promedio (Visita)", min_value=0.5, max_value=15.0, value=round(float(row_vis['Corners_Away']), 1), step=0.1, key=f"f11_{k_fut}")
 
     # MOTOR MATEMÁTICO POISSON FÚTBOL PRE-PARTIDO
     lam_loc = max((xg_favor_local * xg_contra_visita) / max(promedio_liga, 0.5), 0.1)
@@ -445,9 +447,9 @@ if deporte_activo == "⚽ Fútbol (11 Ligas Mundiales)":
     c_sug_2 = round(max(1.05, 1 / (max(prob_2, 0.05) * margen)), 2)
 
     c_sb1, c_sb2, c_sb3 = st.sidebar.columns(3)
-    cuota_1 = c_sb1.number_input("Local (1)", min_value=1.01, value=c_sug_1, step=0.05)
-    cuota_x = c_sb2.number_input("Empate (X)", min_value=1.01, value=c_sug_x, step=0.05)
-    cuota_2 = c_sb3.number_input("Visita (2)", min_value=1.01, value=c_sug_2, step=0.05)
+    cuota_1 = c_sb1.number_input("Local (1)", min_value=1.01, value=c_sug_1, step=0.05, key=f"c1_{k_fut}")
+    cuota_x = c_sb2.number_input("Empate (X)", min_value=1.01, value=c_sug_x, step=0.05, key=f"cx_{k_fut}")
+    cuota_2 = c_sb3.number_input("Visita (2)", min_value=1.01, value=c_sug_2, step=0.05, key=f"c2_{k_fut}")
 
     c_sb4, c_sb5 = st.sidebar.columns(2)
     cuota_over25 = c_sb4.number_input("Over 2.5 Goles", min_value=1.01, value=1.85, step=0.05)
@@ -591,7 +593,6 @@ if deporte_activo == "⚽ Fútbol (11 Ligas Mundiales)":
         lam_rest_vis = max(lam_vis * fraccion_restante * factor_ritmo_vis * urg_vis, 0.04)
         lam_rest_total = lam_rest_loc + lam_rest_vis
 
-        # Renderizar Cancha con Mapa de Calor usando el componente HTML directo
         mostrar_cancha_calor(equipo_local, equipo_visita, dom_loc_pct, dom_vis_pct, factor_ritmo_loc, factor_ritmo_vis, "futbol")
 
         mat_rest = np.zeros((7, 7))
@@ -691,6 +692,240 @@ else:
     gf_nhl_vis_c = (peso_nhl_vis * float(row_nhl_vis["GF_Away"])) + ((1.0 - peso_nhl_vis) * media_gf_a_nhl)
     gc_nhl_vis_c = (peso_nhl_vis * float(row_nhl_vis["GC_Away"])) + ((1.0 - peso_nhl_vis) * media_gc_a_nhl)
 
+    k_nhl = f"{nhl_local}_{nhl_visita}_{usar_bayes_nhl}"
+
     with st.sidebar.expander("⚙️ Auditoría / Ajuste Manual NHL (Goles y SOG)"):
         st.caption(f"Muestra API NHL: {nhl_local} ({pj_nhl_loc} PJ Casa) | {nhl_visita} ({pj_nhl_vis} PJ Ruta)")
-        nhl_gf_loc = st.number_input("Goles a Favor Local (60m/OT)", min_value=0.5, max_value=7.0, value=round(gf_nhl_loc_c, 2), step=0.05)
+        nhl_gf_loc = st.number_input("Goles a Favor Local (60m/OT)", min_value=0.5, max_value=7.0, value=round(gf_nhl_loc_c, 2), step=0.05, key=f"n1_{k_nhl}")
+        nhl_gc_loc = st.number_input("Goles en Contra Local", min_value=0.5, max_value=7.0, value=round(gc_nhl_loc_c, 2), step=0.05, key=f"n2_{k_nhl}")
+        nhl_gf_vis = st.number_input("Goles a Favor Visita (60m/OT)", min_value=0.5, max_value=7.0, value=round(gf_nhl_vis_c, 2), step=0.05, key=f"n3_{k_nhl}")
+        nhl_gc_vis = st.number_input("Goles en Contra Visita", min_value=0.5, max_value=7.0, value=round(gc_nhl_vis_c, 2), step=0.05, key=f"n4_{k_nhl}")
+        nhl_media = st.number_input("Promedio Goles NHL por Equipo", min_value=1.5, max_value=5.0, value=round(media_liga_nhl, 2), step=0.05, key=f"n5_{k_nhl}")
+        st.markdown("---")
+        sog_loc_in = st.number_input("Disparos al Arco (SOG Local)", min_value=15.0, max_value=45.0, value=float(row_nhl_loc["SOG_Home"]), step=0.5, key=f"n6_{k_nhl}")
+        sog_vis_in = st.number_input("Disparos al Arco (SOG Visita)", min_value=15.0, max_value=45.0, value=float(row_nhl_vis["SOG_Away"]), step=0.5, key=f"n7_{k_nhl}")
+
+    # MOTOR MATEMÁTICO NHL PRE-PARTIDO
+    lam_nhl_loc = max((nhl_gf_loc * nhl_gc_vis) / max(nhl_media, 1.0), 0.5)
+    lam_nhl_vis = max((nhl_gf_vis * nhl_gc_loc) / max(nhl_media, 1.0), 0.5)
+    lam_nhl_total = lam_nhl_loc + lam_nhl_vis
+
+    max_g_nhl = 13
+    mat_nhl = np.zeros((max_g_nhl, max_g_nhl))
+    for i in range(max_g_nhl):
+        for j in range(max_g_nhl):
+            mat_nhl[i, j] = poisson.pmf(i, lam_nhl_loc) * poisson.pmf(j, lam_nhl_vis)
+
+    p_reg_loc = float(np.sum(np.tril(mat_nhl, -1)))
+    p_reg_emp = float(np.sum(np.diag(mat_nhl)))
+    p_reg_vis = float(np.sum(np.triu(mat_nhl, 1)))
+
+    ratio_ot_loc = lam_nhl_loc / (lam_nhl_loc + lam_nhl_vis)
+    p_ml_loc = p_reg_loc + (p_reg_emp * ratio_ot_loc)
+    p_ml_vis = p_reg_vis + (p_reg_emp * (1.0 - ratio_ot_loc))
+
+    p_pl_loc_menos15 = float(np.sum(np.tril(mat_nhl, -2)))
+    p_pl_vis_mas15 = 1.0 - p_pl_loc_menos15
+
+    lam_1p_total = lam_nhl_total * 0.29
+    p_1p_over15 = 1.0 - (poisson.pmf(0, lam_1p_total) + poisson.pmf(1, lam_1p_total))
+    p_1p_under15 = 1.0 - p_1p_over15
+    p_1p_btts = (1.0 - poisson.pmf(0, lam_nhl_loc * 0.29)) * (1.0 - poisson.pmf(0, lam_nhl_vis * 0.29))
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🟠 2. Cuotas NHL en Betano")
+    margen_nhl = 1.05
+
+    c_ml1, c_ml2 = st.sidebar.columns(2)
+    cuota_ml_loc = c_ml1.number_input("Moneyline Local (Inc. OT)", min_value=1.01, value=round(1/(max(p_ml_loc, 0.05)*margen_nhl), 2), step=0.05, key=f"cml1_{k_nhl}")
+    cuota_ml_vis = c_ml2.number_input("Moneyline Visita (Inc. OT)", min_value=1.01, value=round(1/(max(p_ml_vis, 0.05)*margen_nhl), 2), step=0.05, key=f"cml2_{k_nhl}")
+
+    c_ot1, c_ot2 = st.sidebar.columns(2)
+    linea_total_nhl = c_ot1.selectbox("Línea Goles Totales", [5.5, 6.0, 6.5], index=2)
+    cuota_over_nhl = c_ot2.number_input(f"Cuota Over {linea_total_nhl}", min_value=1.01, value=1.88, step=0.05)
+    cuota_under_nhl = st.sidebar.number_input(f"Cuota Under {linea_total_nhl}", min_value=1.01, value=1.92, step=0.05)
+
+    with st.sidebar.expander("🏒 Cuotas Puck Line, 60 Min, 1er Período y SOG"):
+        c_reg1, c_reg2, c_reg3 = st.columns(3)
+        cuota_60_1 = c_reg1.number_input("1 (60 Min)", min_value=1.01, value=round(1/(max(p_reg_loc, 0.05)*1.06), 2), step=0.05, key=f"c601_{k_nhl}")
+        cuota_60_x = c_reg2.number_input("X (Empate 60')", min_value=1.01, value=4.20, step=0.10)
+        cuota_60_2 = c_reg3.number_input("2 (60 Min)", min_value=1.01, value=round(1/(max(p_reg_vis, 0.05)*1.06), 2), step=0.05, key=f"c602_{k_nhl}")
+        
+        st.markdown("---")
+        cuota_pl_loc_m15 = st.number_input(f"{nhl_local} -1.5 (Puck Line)", min_value=1.01, value=2.45, step=0.05)
+        cuota_pl_vis_p15 = st.number_input(f"{nhl_visita} +1.5 (Puck Line)", min_value=1.01, value=1.55, step=0.05)
+        
+        st.markdown("---")
+        cuota_1p_o15 = st.number_input("Cuota 1er Período Over 1.5 Goles", min_value=1.01, value=1.82, step=0.05)
+        cuota_tt_loc_o35 = st.number_input(f"Cuota {nhl_local} Over 3.5 Goles", min_value=1.01, value=2.15, step=0.05)
+        cuota_tt_vis_o25 = st.number_input(f"Cuota {nhl_visita} Over 2.5 Goles", min_value=1.01, value=1.78, step=0.05)
+        
+        st.markdown("---")
+        linea_sog_total = st.number_input("Línea Disparos a Puerta (SOG Total)", min_value=45.5, max_value=75.5, value=59.5, step=1.0)
+        cuota_sog_over = st.number_input("Cuota Over SOG", min_value=1.01, value=1.87, step=0.05)
+
+    p_over_total_nhl = 1.0 - sum(poisson.pmf(k, lam_nhl_total) for k in range(int(linea_total_nhl) + 1))
+    p_under_total_nhl = 1.0 - p_over_total_nhl
+
+    p_tt_loc_o35 = 1.0 - sum(poisson.pmf(k, lam_nhl_loc) for k in range(4))
+    p_tt_vis_o25 = 1.0 - sum(poisson.pmf(k, lam_nhl_vis) for k in range(3))
+    lam_sog_tot = sog_loc_in + sog_vis_in
+    p_sog_over = 1.0 - sum(poisson.pmf(k, lam_sog_tot) for k in range(int(linea_sog_total) + 1))
+
+    st.markdown(f"### 🧊 {nhl_local} vs. {nhl_visita} <span style='font-size:16px; color:#71717a; font-weight:normal;'>(NHL Hockey sobre Hielo)</span>", unsafe_allow_html=True)
+
+    if usar_bayes_nhl and (pj_nhl_loc < 8 or pj_nhl_vis < 8):
+        st.caption(f"🛡️ **Amortiguador Bayesiano NHL Activo:** Muestra ponderada con la media de la liga ({media_liga_nhl:.2f} G/p) por arranque de temporada ({nhl_local}: {pj_nhl_loc} PJ Casa | {nhl_visita}: {pj_nhl_vis} PJ Ruta).")
+
+    nk1, nk2, nk3, nk4 = st.columns(4)
+    nk1.metric("🏒 Goles Esperados (60m)", f"{lam_nhl_loc:.2f} - {lam_nhl_vis:.2f}", f"Total: {lam_nhl_total:.2f} goles")
+    nk2.metric("🏆 Prob. Moneyline (Inc. OT)", f"{p_ml_loc*100:.1f}% vs {p_ml_vis*100:.1f}%", f"Prob. Prórroga (OT): {p_reg_emp*100:.1f}%")
+    nk3.metric("⏱️ Proyección 1er Período", f"{lam_1p_total:.2f} goles (1P)", f"Over 1.5 (1P): {p_1p_over15*100:.1f}%")
+    nk4.metric("🥅 Disparos al Arco (SOG)", f"{lam_sog_tot:.1f} tiros", f"{sog_loc_in:.1f} L + {sog_vis_in:.1f} V")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    ntab1, ntab2, ntab3, ntab4 = st.tabs([
+        "🏆 1. Moneyline, 60 Minutos, Puck Line y Totales",
+        "⏱️ 2. Team Totals, 1er Período y Disparos (SOG)",
+        "🔢 3. Matriz de Marcador Exacto NHL",
+        "🔴 4. Radar En Vivo NHL (In-Play)"
+    ])
+
+    with ntab1:
+        mercados_nhl_1 = [
+            (f"Moneyline: Gana {nhl_local} (Incluye OT/SO)", p_ml_loc, cuota_ml_loc),
+            (f"Moneyline: Gana {nhl_visita} (Incluye OT/SO)", p_ml_vis, cuota_ml_vis),
+            (f"Tiempo Reglamentario (60'): Gana {nhl_local} (1)", p_reg_loc, cuota_60_1),
+            ("Tiempo Reglamentario (60'): Empate / Se va a Prórroga (X)", p_reg_emp, cuota_60_x),
+            (f"Tiempo Reglamentario (60'): Gana {nhl_visita} (2)", p_reg_vis, cuota_60_2),
+            (f"Más de {linea_total_nhl} Goles Totales (Over)", p_over_total_nhl, cuota_over_nhl),
+            (f"Menos de {linea_total_nhl} Goles Totales (Under)", p_under_total_nhl, cuota_under_nhl),
+            (f"Puck Line: {nhl_local} -1.5 (Gana por 2+ goles)", p_pl_loc_menos15, cuota_pl_loc_m15),
+            (f"Puck Line: {nhl_visita} +1.5 (Gana o pierde por 1 gol)", p_pl_vis_mas15, cuota_pl_vis_p15)
+        ]
+        filas_nhl_1 = []
+        for m, p, c in mercados_nhl_1:
+            justa = 1 / p if p > 0 else 99.0
+            edge = (p * c) - 1
+            filas_nhl_1.append({
+                "Mercado Principal NHL (Betano)": m,
+                "Prob. Real (%)": f"{p*100:.1f}%",
+                "Cuota Mínima Justa": f"{justa:.2f}",
+                "Cuota Betano": f"{c:.2f}",
+                "Edge / Ventaja (%)": f"{edge*100:+.2f}%",
+                "Veredicto": "✅ APOSTAR (+EV)" if edge > 0.04 else "❌ Pasar (Sin valor)"
+            })
+        df_nhl_1 = pd.DataFrame(filas_nhl_1)
+        st.dataframe(df_nhl_1.style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+
+    with ntab2:
+        mercados_nhl_2 = [
+            ("1er Período: Más de 1.5 Goles (Over 1.5 1P)", p_1p_over15, cuota_1p_o15),
+            ("1er Período: Menos de 1.5 Goles (Under 1.5 1P)", p_1p_under15, 1.95),
+            ("1er Período: Ambos Equipos Anotan en el 1P - SÍ", p_1p_btts, 2.75),
+            (f"Total por Equipo: {nhl_local} Más de 3.5 Goles", p_tt_loc_o35, cuota_tt_loc_o35),
+            (f"Total por Equipo: {nhl_visita} Más de 2.5 Goles", p_tt_vis_o25, cuota_tt_vis_o25),
+            (f"Disparos a Puerta: Más de {linea_sog_total} Tiros (Over SOG)", p_sog_over, cuota_sog_over),
+            (f"Disparos a Puerta: Menos de {linea_sog_total} Tiros (Under SOG)", 1.0 - p_sog_over, 1.87)
+        ]
+        filas_nhl_2 = []
+        for m, p, c in mercados_nhl_2:
+            justa = 1 / p if p > 0 else 99.0
+            edge = (p * c) - 1
+            filas_nhl_2.append({
+                "Mercado Especial NHL": m,
+                "Prob. Real (%)": f"{p*100:.1f}%",
+                "Cuota Mínima Justa": f"{justa:.2f}",
+                "Cuota Betano": f"{c:.2f}",
+                "Edge / Ventaja (%)": f"{edge*100:+.2f}%",
+                "Veredicto": "✅ APOSTAR (+EV)" if edge > 0.04 else "❌ Pasar (Sin valor)"
+            })
+        df_nhl_2 = pd.DataFrame(filas_nhl_2)
+        st.dataframe(df_nhl_2.style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+
+    with ntab3:
+        st.caption("Probabilidad matemática de marcador exacto en tiempo reglamentario (0 a 7 goles por equipo):")
+        df_mat_nhl = pd.DataFrame(
+            mat_nhl[:8, :8] * 100,
+            index=[f"🏠 {nhl_local} ({i})" for i in range(8)],
+            columns=[f"✈️ {nhl_visita} ({j})" for j in range(8)]
+        )
+        st.dataframe(df_mat_nhl.style.format("{:.1f}%").background_gradient(cmap="Blues"), use_container_width=True)
+
+    with ntab4:
+        st.markdown("#### 🔴 Escáner En Vivo NHL: Presión en Pista y Recálculo de Tiempo Restante")
+        st.caption("Ingresa el minuto jugado (de 1 a 60), goles y disparos (SOG) en vivo para detectar valor en tiempo real:")
+
+        nh1, nh2, nh3, nh4, nh5 = st.columns(5)
+        min_nhl = nh1.slider("⏱️ Minuto Jugado (0-60')", min_value=1, max_value=59, value=35)
+        g_nhl_loc_v = nh2.number_input(f"🏒 Goles {nhl_local}", min_value=0, max_value=12, value=2)
+        g_nhl_vis_v = nh3.number_input(f"🏒 Goles {nhl_visita}", min_value=0, max_value=12, value=2)
+        sog_nhl_loc_v = nh4.number_input(f"🥅 SOG {nhl_local}", min_value=0, max_value=60, value=20)
+        sog_nhl_vis_v = nh5.number_input(f"🥅 SOG {nhl_visita}", min_value=0, max_value=60, value=16)
+
+        dom_nhl_l = ((sog_nhl_loc_v + 1.0) / (sog_nhl_loc_v + sog_nhl_vis_v + 2.0)) * 100.0
+        dom_nhl_v = 100.0 - dom_nhl_l
+
+        frac_nhl_jug = max(min_nhl / 60.0, 0.08)
+        frac_nhl_rest = max((60.0 - min_nhl) / 60.0, 0.03)
+
+        ritmo_nhl_l = np.clip(0.65 + 0.35 * ((sog_nhl_loc_v / frac_nhl_jug) / max(sog_loc_in, 15.0)), 0.70, 1.45)
+        ritmo_nhl_v = np.clip(0.65 + 0.35 * ((sog_nhl_vis_v / frac_nhl_jug) / max(sog_vis_in, 15.0)), 0.70, 1.45)
+
+        factor_empty_net = 1.25 if (min_nhl >= 48 and abs(g_nhl_loc_v - g_nhl_vis_v) in [1, 2]) else 1.0
+
+        lam_nhl_rest_l = max(lam_nhl_loc * frac_nhl_rest * ritmo_nhl_l * factor_empty_net, 0.05)
+        lam_nhl_rest_v = max(lam_nhl_vis * frac_nhl_rest * ritmo_nhl_v * factor_empty_net, 0.05)
+        lam_nhl_rest_tot = lam_nhl_rest_l + lam_nhl_rest_v
+
+        mostrar_cancha_calor(nhl_local, nhl_visita, dom_nhl_l, dom_nhl_v, ritmo_nhl_l, ritmo_nhl_v, "nhl")
+
+        p_nhl_1mas = 1.0 - poisson.pmf(0, lam_nhl_rest_tot)
+        p_nhl_2mas = 1.0 - (poisson.pmf(0, lam_nhl_rest_tot) + poisson.pmf(1, lam_nhl_rest_tot))
+
+        p_nhl_f1, p_nhl_fx, p_nhl_f2 = 0.0, 0.0, 0.0
+        for i in range(9):
+            for j in range(9):
+                prob_ij = poisson.pmf(i, lam_nhl_rest_l) * poisson.pmf(j, lam_nhl_rest_v)
+                if (g_nhl_loc_v + i) > (g_nhl_vis_v + j):
+                    p_nhl_f1 += prob_ij
+                elif (g_nhl_loc_v + i) == (g_nhl_vis_v + j):
+                    p_nhl_fx += prob_ij
+                else:
+                    p_nhl_f2 += prob_ij
+
+        p_nhl_ml_vivo_l = p_nhl_f1 + (p_nhl_fx * ratio_ot_loc)
+        p_nhl_ml_vivo_v = p_nhl_f2 + (p_nhl_fx * (1.0 - ratio_ot_loc))
+
+        g_actual_nhl = g_nhl_loc_v + g_nhl_vis_v
+        lin_nhl_v1 = g_actual_nhl + 0.5
+        lin_nhl_v2 = g_actual_nhl + 1.5
+
+        nq1, nq2, nq3 = st.columns(3)
+        c_nhl_v_o1 = nq1.number_input(f"Cuota Más de {lin_nhl_v1} Goles (+1 gol)", min_value=1.01, value=round(max(1.06, 1/max(p_nhl_1mas*1.06, 0.05)), 2), step=0.05)
+        c_nhl_v_o2 = nq2.number_input(f"Cuota Más de {lin_nhl_v2} Goles (+2 goles)", min_value=1.01, value=round(max(1.15, 1/max(p_nhl_2mas*1.06, 0.05)), 2), step=0.05)
+        c_nhl_v_ml1 = nq3.number_input(f"Cuota Moneyline En Vivo {nhl_local}", min_value=1.01, value=round(max(1.05, 1/max(p_nhl_ml_vivo_l*1.06, 0.05)), 2), step=0.05)
+
+        mercados_nhl_vivo = [
+            (f"Más de {lin_nhl_v1} Goles en 60 Min (1+ gol adicional)", p_nhl_1mas, c_nhl_v_o1),
+            (f"Más de {lin_nhl_v2} Goles en 60 Min (2+ goles adicionales)", p_nhl_2mas, c_nhl_v_o2),
+            (f"Moneyline En Vivo (Inc. OT): Gana {nhl_local}", p_nhl_ml_vivo_l, c_nhl_v_ml1),
+            (f"Moneyline En Vivo (Inc. OT): Gana {nhl_visita}", p_nhl_ml_vivo_v, round(max(1.05, 1/max(p_nhl_ml_vivo_v*1.06, 0.05)), 2)),
+            (f"Empate en 60 Minutos (Se va a Overtime partiendo de {g_nhl_loc_v}-{g_nhl_vis_v})", p_nhl_fx, round(max(1.20, 1/max(p_nhl_fx*1.07, 0.04)), 2))
+        ]
+
+        filas_nhl_v = []
+        for m, p, c in mercados_nhl_vivo:
+            justa = 1 / p if p > 0 else 99.0
+            edge = (p * c) - 1
+            filas_nhl_v.append({
+                "Mercado En Vivo NHL": m,
+                "Prob. Tiempo Restante (%)": f"{p*100:.1f}%",
+                "Cuota Justa En Vivo": f"{justa:.2f}",
+                "Cuota Betano En Vivo": f"{c:.2f}",
+                "Edge / Ventaja (%)": f"{edge*100:+.2f}%",
+                "Veredicto": "🔥 ENTRAR EN VIVO (+EV)" if edge > 0.04 else "❄️ Esperar / Sin valor"
+            })
+        df_nhl_v = pd.DataFrame(filas_nhl_v)
+        st.dataframe(df_nhl_v.style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
