@@ -6,7 +6,7 @@ import requests
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 6.0 | Fútbol & NHL Suite",
+    page_title="Pro Bet Analyzer 7.0 | Pre-Partido & Live Radar",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -15,7 +15,6 @@ st.set_page_config(
 # --- DISEÑO VISUAL PROFESIONAL (CSS PERSONALIZADO) ---
 st.markdown("""
 <style>
-    /* Encabezado Principal Ejecutivo */
     .main-banner {
         background: linear-gradient(135deg, #18181b 0%, #27272a 60%, #ea580c 100%);
         padding: 24px 30px;
@@ -37,7 +36,6 @@ st.markdown("""
         margin: 6px 0 0 0;
         font-size: 1.0rem;
     }
-    /* Tarjetas de Métricas (KPIs) */
     div[data-testid="stMetric"] {
         background-color: #ffffff;
         border: 1px solid #e4e4e7;
@@ -46,24 +44,70 @@ st.markdown("""
         border-radius: 12px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.04);
     }
-    /* Estilo de Pestañas (Tabs) */
     button[data-baseweb="tab"] {
-        font-size: 16px !important;
+        font-size: 15px !important;
         font-weight: 700 !important;
     }
 </style>
 
 <div class="main-banner">
-    <h1>🏆 PRO BET ANALYZER 6.0 <span style="color:#ff8c00;">| FÚTBOL & NHL SUITE</span></h1>
-    <p>Motor Predictivo de Distribución de Poisson • Amortiguador Bayesiano • Auditoría Multi-Mercado (+EV) vs. Betano</p>
+    <h1>🏆 PRO BET ANALYZER 7.0 <span style="color:#ff8c00;">| PRE-MATCH & LIVE RADAR</span></h1>
+    <p>Motor Predictivo de Distribución de Poisson • Amortiguador Bayesiano • Mapa de Calor y Auditoría En Vivo (+EV) vs. Betano</p>
 </div>
 """, unsafe_allow_html=True)
 
 # Función para colorear filas con Valor (+EV)
 def resaltar_valor(fila):
-    if "✅ APOSTAR" in str(fila["Veredicto"]):
-        return ['background-color: rgba(22, 163, 74, 0.14); font-weight: 600;'] * len(fila)
+    veredicto = str(fila.get("Veredicto", ""))
+    if "✅" in veredicto or "🔥" in veredicto:
+        return ['background-color: rgba(22, 163, 74, 0.15); font-weight: 600;'] * len(fila)
     return [''] * len(fila)
+
+# Función para dibujar Cancha de Fútbol o Pista NHL con Mapa de Calor de Asedio en Vivo
+def dibujar_cancha_calor(eq_loc, eq_vis, dom_loc, dom_vis, intensidad_loc, intensidad_vis, deporte="futbol"):
+    bg_pitch = "linear-gradient(90deg, #14532d 0%, #166534 25%, #15803d 50%, #166534 75%, #14532d 100%)" if deporte == "futbol" else "linear-gradient(90deg, #e0f2fe 0%, #f0f9ff 50%, #e0f2fe 100%)"
+    line_color = "rgba(255,255,255,0.65)" if deporte == "futbol" else "rgba(220,38,38,0.45)"
+    text_color = "#ffffff" if deporte == "futbol" else "#0f172a"
+    border_pitch = "#ffffff" if deporte == "futbol" else "#0284c7"
+
+    op_loc = min(max(0.25 + (dom_loc / 100.0) * 0.65, 0.25), 0.88)
+    op_vis = min(max(0.25 + (dom_vis / 100.0) * 0.65, 0.25), 0.88)
+    rad_loc = int(90 + (intensidad_loc * 55))
+    rad_vis = int(90 + (intensidad_vis * 55))
+
+    html_code = f"""
+    <div style="background:{bg_pitch}; border: 3px solid {border_pitch}; border-radius: 14px; height: 270px; position: relative; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.18); margin-bottom: 18px; font-family: sans-serif;">
+        <!-- Línea central y círculo -->
+        <div style="position:absolute; left:50%; top:0; bottom:0; width:3px; background:{line_color}; transform:translateX(-50%);"></div>
+        <div style="position:absolute; left:50%; top:50%; width:84px; height:84px; border:3px solid {line_color}; border-radius:50%; transform:translate(-50%, -50%);"></div>
+        <!-- Áreas -->
+        <div style="position:absolute; left:0; top:22%; bottom:22%; width:15%; border-right:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>
+        <div style="position:absolute; right:0; top:22%; bottom:22%; width:15%; border-left:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>
+
+        <!-- Foco de Calor Ataque Local (Ataca de Izquierda a Derecha -> Zona Derecha) -->
+        <div style="position:absolute; right:6%; top:50%; width:{rad_loc}px; height:{rad_loc}px; background:radial-gradient(circle, rgba(255,59,0,{op_loc}) 0%, rgba(255,145,0,{op_loc*0.6}) 45%, rgba(255,255,0,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>
+        <div style="position:absolute; right:22%; top:32%; width:{int(rad_loc*0.75)}px; height:{int(rad_loc*0.75)}px; background:radial-gradient(circle, rgba(255,115,0,{op_loc*0.8}) 0%, rgba(255,255,0,0) 70%); border-radius:50%; pointer-events:none;"></div>
+        <div style="position:absolute; right:22%; top:68%; width:{int(rad_loc*0.75)}px; height:{int(rad_loc*0.75)}px; background:radial-gradient(circle, rgba(255,115,0,{op_loc*0.8}) 0%, rgba(255,255,0,0) 70%); border-radius:50%; pointer-events:none;"></div>
+
+        <!-- Foco de Calor Ataque Visita (Ataca de Derecha a Izquierda -> Zona Izquierda) -->
+        <div style="position:absolute; left:6%; top:50%; width:{rad_vis}px; height:{rad_vis}px; background:radial-gradient(circle, rgba(0,200,255,{op_vis}) 0%, rgba(0,110,255,{op_vis*0.6}) 45%, rgba(0,0,255,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>
+        <div style="position:absolute; left:22%; top:35%; width:{int(rad_vis*0.75)}px; height:{int(rad_vis*0.75)}px; background:radial-gradient(circle, rgba(56,189,248,{op_vis*0.8}) 0%, rgba(0,0,255,0) 70%); border-radius:50%; pointer-events:none;"></div>
+
+        <!-- Etiquetas Superiores de Dominio Territorial -->
+        <div style="position:absolute; left:16px; top:12px; background:rgba(15,23,42,0.82); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-left: 4px solid #ff6b00;">
+            🏠 {eq_loc} (Ataca ➔) | Presión: {dom_loc:.0f}%
+        </div>
+        <div style="position:absolute; right:16px; top:12px; background:rgba(15,23,42,0.82); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-right: 4px solid #38bdf8;">
+            Presión: {dom_vis:.0f}% | (⬅ Ataca) {eq_vis} ✈️
+        </div>
+
+        <!-- Leyenda Inferior -->
+        <div style="position:absolute; left:50%; bottom:10px; transform:translateX(-50%); background:rgba(15,23,42,0.85); color:#f8fafc; padding:4px 16px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">
+            🔥 Rojo/Naranja: Zona de Asedio de {eq_loc} &nbsp;&nbsp;|&nbsp;&nbsp; ❄️ Azul Eléctrico: Zona de Asedio de {eq_vis}
+        </div>
+    </div>
+    """
+    return html_code
 
 # --- SELECTOR MAESTRO DE DEPORTE ---
 st.sidebar.markdown("### 🎯 Selector de Deporte")
@@ -74,7 +118,7 @@ deporte_activo = st.sidebar.radio(
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# MÓDULO 1: FÚTBOL (100% INTACTO CON 11 LIGAS, REMATES, CÓRNERS Y BAYESIANO)
+# MÓDULO 1: FÚTBOL (11 LIGAS, REMATES, CÓRNERS, BAYESIANO + RADAR EN VIVO)
 # ==============================================================================
 LIGAS_EUROPA_CSV = {
     "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
@@ -258,7 +302,6 @@ EQUIPOS_NHL_BASE = [
 
 @st.cache_data(ttl=3600)
 def cargar_datos_nhl():
-    # 1. API Oficial Pública de la NHL (Incluye desglose exacto Home / Road)
     try:
         r = requests.get("https://api-web.nhle.com/v1/standings/now", timeout=6).json()
         standings = r.get("standings", [])
@@ -272,7 +315,6 @@ def cargar_datos_nhl():
             gf_a = float(t.get("roadGoalsFor", 3 * pj_a)) / pj_a
             gc_a = float(t.get("roadGoalsAgainst", 3 * pj_a)) / pj_a
             
-            # Estimación de Disparos al Arco (SOG) basada en eficiencia ofensiva NHL (~10% shooting pct)
             sog_h = round(np.clip(26.0 + (gf_h - 2.6) * 3.8, 24.0, 36.5), 1)
             sog_a = round(np.clip(25.0 + (gf_a - 2.5) * 3.8, 23.0, 35.5), 1)
             
@@ -292,7 +334,6 @@ def cargar_datos_nhl():
     except Exception:
         pass
 
-    # 2. Respaldo API pública ESPN NHL
     try:
         url_espn = "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings"
         r = requests.get(url_espn, timeout=6).json()
@@ -320,7 +361,6 @@ def cargar_datos_nhl():
     except Exception:
         pass
 
-    # 3. Respaldo local garantizado
     filas = []
     for eq in sorted(EQUIPOS_NHL_BASE):
         filas.append({
@@ -391,7 +431,7 @@ if deporte_activo == "⚽ Fútbol (11 Ligas Mundiales)":
         corners_local = st.number_input("Córners Promedio (Local)", min_value=0.5, max_value=15.0, value=round(float(row_loc['Corners_Home']), 1), step=0.1)
         corners_visita = st.number_input("Córners Promedio (Visita)", min_value=0.5, max_value=15.0, value=round(float(row_vis['Corners_Away']), 1), step=0.1)
 
-    # MOTOR MATEMÁTICO POISSON FÚTBOL
+    # MOTOR MATEMÁTICO POISSON FÚTBOL PRE-PARTIDO
     lam_loc = max((xg_favor_local * xg_contra_visita) / max(promedio_liga, 0.5), 0.1)
     lam_vis = max((xg_favor_visita * xg_contra_local) / max(promedio_liga, 0.5), 0.1)
 
@@ -460,10 +500,11 @@ if deporte_activo == "⚽ Fútbol (11 Ligas Mundiales)":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "🎯 1. Mercados de Goles y 1X2", 
         "⛳ 2. Mercados de Remates y Córners", 
-        "🔢 3. Matriz Exacta de Poisson"
+        "🔢 3. Matriz Exacta de Poisson",
+        "🔴 4. Radar En Vivo (In-Play)"
     ])
 
     with tab1:
@@ -524,8 +565,112 @@ if deporte_activo == "⚽ Fútbol (11 Ligas Mundiales)":
         )
         st.dataframe(df_matriz.style.format("{:.1f}%").background_gradient(cmap="YlOrBr"), use_container_width=True)
 
+    with tab4:
+        st.markdown("#### 🔴 Escáner Táctico de Presión y Recálculo de Poisson en Tiempo Real")
+        st.caption("Ingresa los datos actuales del partido en vivo (Sofascore / Betano) para visualizar el mapa de calor de asedio y detectar cuotas desajustadas en los minutos restantes:")
+
+        lc1, lc2, lc3, lc4 = st.columns(4)
+        min_actual = lc1.slider("⏱️ Minuto Actual", min_value=1, max_value=90, value=60)
+        goles_vivo_loc = lc2.number_input(f"⚽ Goles {equipo_local}", min_value=0, max_value=10, value=1)
+        goles_vivo_vis = lc3.number_input(f"⚽ Goles {equipo_visita}", min_value=0, max_value=10, value=1)
+        posesion_loc = lc4.slider(f"📊 Posesión {equipo_local} (%)", min_value=20, max_value=80, value=54)
+
+        ls1, ls2, ls3, ls4 = st.columns(4)
+        sot_vivo_loc = ls1.number_input(f"🥅 A Puerta {equipo_local} (En Vivo)", min_value=0, max_value=25, value=4)
+        sot_vivo_vis = ls2.number_input(f"🥅 A Puerta {equipo_visita} (En Vivo)", min_value=0, max_value=25, value=2)
+        cor_vivo_loc = ls3.number_input(f"⛳ Córners {equipo_local} (En Vivo)", min_value=0, max_value=25, value=5)
+        cor_vivo_vis = ls4.number_input(f"⛳ Córners {equipo_visita} (En Vivo)", min_value=0, max_value=25, value=3)
+
+        # Cálculo de Índice de Presión Ofensiva (Momentum)
+        puntos_presion_loc = (sot_vivo_loc * 3.0) + (cor_vivo_loc * 1.2) + (posesion_loc * 0.12) + 0.5
+        puntos_presion_vis = (sot_vivo_vis * 3.0) + (cor_vivo_vis * 1.2) + ((100 - posesion_loc) * 0.12) + 0.5
+        dom_loc_pct = (puntos_presion_loc / (puntos_presion_loc + puntos_presion_vis)) * 100.0
+        dom_vis_pct = 100.0 - dom_loc_pct
+
+        # Ritmo real vs esperado en el minuto actual
+        fraccion_jugada = max(min_actual / 94.0, 0.08)
+        fraccion_restante = max((94.0 - min_actual) / 94.0, 0.03)
+
+        ritmo_sot_loc = (sot_vivo_loc / fraccion_jugada) / max(puerta_local, 1.5)
+        ritmo_sot_vis = (sot_vivo_vis / fraccion_jugada) / max(puerta_visita, 1.5)
+
+        factor_ritmo_loc = np.clip(0.65 + 0.35 * ritmo_sot_loc, 0.65, 1.55)
+        factor_ritmo_vis = np.clip(0.65 + 0.35 * ritmo_sot_vis, 0.65, 1.55)
+
+        # Urgencia según marcador actual (Game State)
+        urg_loc = 1.18 if goles_vivo_loc < goles_vivo_vis else (1.06 if goles_vivo_loc == goles_vivo_vis else 0.90)
+        urg_vis = 1.18 if goles_vivo_vis < goles_vivo_loc else (1.06 if goles_vivo_loc == goles_vivo_vis else 0.90)
+
+        lam_rest_loc = max(lam_loc * fraccion_restante * factor_ritmo_loc * urg_loc, 0.04)
+        lam_rest_vis = max(lam_vis * fraccion_restante * factor_ritmo_vis * urg_vis, 0.04)
+        lam_rest_total = lam_rest_loc + lam_rest_vis
+
+        # Renderizar Cancha con Mapa de Calor
+        st.markdown(dibujar_cancha_calor(equipo_local, equipo_visita, dom_loc_pct, dom_vis_pct, factor_ritmo_loc, factor_ritmo_vis, "futbol"), unsafe_allow_html=True)
+
+        # Probabilidades Poisson del Tiempo Restante
+        mat_rest = np.zeros((7, 7))
+        for i in range(7):
+            for j in range(7):
+                mat_rest[i, j] = poisson.pmf(i, lam_rest_loc) * poisson.pmf(j, lam_rest_vis)
+
+        p_1_mas_gol = 1.0 - poisson.pmf(0, lam_rest_total)
+        p_2_mas_goles = 1.0 - (poisson.pmf(0, lam_rest_total) + poisson.pmf(1, lam_rest_total))
+        p_prox_gol_loc = (lam_rest_loc / lam_rest_total) * p_1_mas_gol
+        p_prox_gol_vis = (lam_rest_vis / lam_rest_total) * p_1_mas_gol
+
+        # Probabilidad del resultado final partiendo del marcador actual
+        p_final_1, p_final_x, p_final_2 = 0.0, 0.0, 0.0
+        for i in range(7):
+            for j in range(7):
+                g_fin_l = goles_vivo_loc + i
+                g_fin_v = goles_vivo_vis + j
+                if g_fin_l > g_fin_v:
+                    p_final_1 += mat_rest[i, j]
+                elif g_fin_l == g_fin_v:
+                    p_final_x += mat_rest[i, j]
+                else:
+                    p_final_2 += mat_rest[i, j]
+
+        goles_actuales_tot = goles_vivo_loc + goles_vivo_vis
+        linea_vivo_1 = goles_actuales_tot + 0.5
+        linea_vivo_2 = goles_actuales_tot + 1.5
+
+        st.markdown("##### 🟠 Introduce las Cuotas EN VIVO de Betano para auditar el valor:")
+        q1, q2, q3, q4 = st.columns(4)
+        c_vivo_1gol = q1.number_input(f"Cuota Más de {linea_vivo_1} Goles (+1 gol más)", min_value=1.01, value=round(max(1.08, 1/max(p_1_mas_gol*1.06, 0.05)), 2), step=0.05)
+        c_vivo_prox_l = q2.number_input(f"Cuota Próximo Gol: {equipo_local}", min_value=1.01, value=round(max(1.10, 1/max(p_prox_gol_loc*1.06, 0.05)), 2), step=0.05)
+        c_vivo_prox_v = q3.number_input(f"Cuota Próximo Gol: {equipo_visita}", min_value=1.01, value=round(max(1.10, 1/max(p_prox_gol_vis*1.06, 0.05)), 2), step=0.05)
+        c_vivo_gana_l = q4.number_input(f"Cuota Gana {equipo_local} (En Vivo)", min_value=1.01, value=round(max(1.05, 1/max(p_final_1*1.06, 0.05)), 2), step=0.05)
+
+        mercados_vivo = [
+            (f"Más de {linea_vivo_1} Goles en el Partido (1+ gol en lo que resta)", p_1_mas_gol, c_vivo_1gol),
+            (f"Más de {linea_vivo_2} Goles en el Partido (2+ goles en lo que resta)", p_2_mas_goles, round(max(1.20, 1/max(p_2_mas_goles*1.07, 0.04)), 2)),
+            (f"Próximo Gol en Vivo: Anota {equipo_local}", p_prox_gol_loc, c_vivo_prox_l),
+            (f"Próximo Gol en Vivo: Anota {equipo_visita}", p_prox_gol_vis, c_vivo_prox_v),
+            (f"Resultado Final (Partiendo de {goles_vivo_loc}-{goles_vivo_vis}): Gana {equipo_local}", p_final_1, c_vivo_gana_l),
+            (f"Resultado Final (Partiendo de {goles_vivo_loc}-{goles_vivo_vis}): Empate", p_final_x, round(max(1.10, 1/max(p_final_x*1.06, 0.05)), 2)),
+            (f"Resultado Final (Partiendo de {goles_vivo_loc}-{goles_vivo_vis}): Gana {equipo_visita}", p_final_2, round(max(1.10, 1/max(p_final_2*1.06, 0.05)), 2))
+        ]
+
+        filas_vivo = []
+        for m, p, c in mercados_vivo:
+            justa = 1 / p if p > 0 else 99.0
+            edge = (p * c) - 1
+            filas_vivo.append({
+                "Mercado En Vivo (In-Play)": m,
+                "Prob. Tiempo Restante (%)": f"{p*100:.1f}%",
+                "Cuota Justa En Vivo": f"{justa:.2f}",
+                "Cuota Betano En Vivo": f"{c:.2f}",
+                "Edge / Ventaja (%)": f"{edge*100:+.2f}%",
+                "Veredicto": "🔥 ENTRAR EN VIVO (+EV)" if edge > 0.04 else "❄️ Esperar / Sin valor"
+            })
+        df_vivo = pd.DataFrame(filas_vivo)
+        st.dataframe(df_vivo.style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+
+
 # ==============================================================================
-# EJECUCIÓN MÓDULO 2: NHL (HOCKEY SOBRE HIELO - MULTI-MERCADOS)
+# EJECUCIÓN MÓDULO 2: NHL (HOCKEY SOBRE HIELO - MULTI-MERCADOS + RADAR EN VIVO)
 # ==============================================================================
 else:
     st.sidebar.markdown("### 🏒 1. Selección de Partido NHL")
@@ -573,7 +718,7 @@ else:
         sog_loc_in = st.number_input("Disparos al Arco (SOG Local)", min_value=15.0, max_value=45.0, value=float(row_nhl_loc["SOG_Home"]), step=0.5)
         sog_vis_in = st.number_input("Disparos al Arco (SOG Visita)", min_value=15.0, max_value=45.0, value=float(row_nhl_vis["SOG_Away"]), step=0.5)
 
-    # --- MOTOR MATEMÁTICO NHL (POISSON 13x13 PARA CAPTURAR PARTIDOS DE ALTA ANOTACIÓN) ---
+    # MOTOR MATEMÁTICO NHL PRE-PARTIDO
     lam_nhl_loc = max((nhl_gf_loc * nhl_gc_vis) / max(nhl_media, 1.0), 0.5)
     lam_nhl_vis = max((nhl_gf_vis * nhl_gc_loc) / max(nhl_media, 1.0), 0.5)
     lam_nhl_total = lam_nhl_loc + lam_nhl_vis
@@ -584,32 +729,22 @@ else:
         for j in range(max_g_nhl):
             mat_nhl[i, j] = poisson.pmf(i, lam_nhl_loc) * poisson.pmf(j, lam_nhl_vis)
 
-    # 1. Probabilidades 60 Minutos (1X2 Reglamentario)
     p_reg_loc = float(np.sum(np.tril(mat_nhl, -1)))
     p_reg_emp = float(np.sum(np.diag(mat_nhl)))
     p_reg_vis = float(np.sum(np.triu(mat_nhl, 1)))
 
-    # 2. Moneyline (Incluye Prórroga y Shootout - distribución proporcional en OT)
     ratio_ot_loc = lam_nhl_loc / (lam_nhl_loc + lam_nhl_vis)
     p_ml_loc = p_reg_loc + (p_reg_emp * ratio_ot_loc)
     p_ml_vis = p_reg_vis + (p_reg_emp * (1.0 - ratio_ot_loc))
 
-    # 3. Puck Line (-1.5 / +1.5)
-    # Local -1.5 significa que Local gana por 2 o más goles (i - j >= 2)
     p_pl_loc_menos15 = float(np.sum(np.tril(mat_nhl, -2)))
     p_pl_vis_mas15 = 1.0 - p_pl_loc_menos15
-    # Visita -1.5 significa que Visita gana por 2 o más goles (j - i >= 2)
-    p_pl_vis_menos15 = float(np.sum(np.triu(mat_nhl, 2)))
-    p_pl_loc_mas15 = 1.0 - p_pl_vis_menos15
 
-    # 4. Primer Período (1P representa históricamente el 29% de los goles del partido)
     lam_1p_total = lam_nhl_total * 0.29
     p_1p_over15 = 1.0 - (poisson.pmf(0, lam_1p_total) + poisson.pmf(1, lam_1p_total))
     p_1p_under15 = 1.0 - p_1p_over15
-    # Ambos anotan en el 1er período
     p_1p_btts = (1.0 - poisson.pmf(0, lam_nhl_loc * 0.29)) * (1.0 - poisson.pmf(0, lam_nhl_vis * 0.29))
 
-    # --- ENTRADA DE CUOTAS BETANO NHL ---
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟠 2. Cuotas NHL en Betano")
     margen_nhl = 1.05
@@ -642,17 +777,14 @@ else:
         linea_sog_total = st.number_input("Línea Disparos a Puerta (SOG Total)", min_value=45.5, max_value=75.5, value=59.5, step=1.0)
         cuota_sog_over = st.number_input("Cuota Over SOG", min_value=1.01, value=1.87, step=0.05)
 
-    # Cálculo Over/Under Línea Seleccionada
     p_over_total_nhl = 1.0 - sum(poisson.pmf(k, lam_nhl_total) for k in range(int(linea_total_nhl) + 1))
     p_under_total_nhl = 1.0 - p_over_total_nhl
 
-    # Cálculo Team Totals y SOG
     p_tt_loc_o35 = 1.0 - sum(poisson.pmf(k, lam_nhl_loc) for k in range(4))
     p_tt_vis_o25 = 1.0 - sum(poisson.pmf(k, lam_nhl_vis) for k in range(3))
     lam_sog_tot = sog_loc_in + sog_vis_in
     p_sog_over = 1.0 - sum(poisson.pmf(k, lam_sog_tot) for k in range(int(linea_sog_total) + 1))
 
-    # --- PANEL PRINCIPAL NHL ---
     st.markdown(f"### 🧊 {nhl_local} vs. {nhl_visita} <span style='font-size:16px; color:#71717a; font-weight:normal;'>(NHL Hockey sobre Hielo)</span>", unsafe_allow_html=True)
 
     if usar_bayes_nhl and (pj_nhl_loc < 8 or pj_nhl_vis < 8):
@@ -666,10 +798,11 @@ else:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    ntab1, ntab2, ntab3 = st.tabs([
+    ntab1, ntab2, ntab3, ntab4 = st.tabs([
         "🏆 1. Moneyline, 60 Minutos, Puck Line y Totales",
         "⏱️ 2. Team Totals, 1er Período y Disparos (SOG)",
-        "🔢 3. Matriz de Marcador Exacto NHL"
+        "🔢 3. Matriz de Marcador Exacto NHL",
+        "🔴 4. Radar En Vivo NHL (In-Play)"
     ])
 
     with ntab1:
@@ -732,3 +865,82 @@ else:
             columns=[f"✈️ {nhl_visita} ({j})" for j in range(8)]
         )
         st.dataframe(df_mat_nhl.style.format("{:.1f}%").background_gradient(cmap="Blues"), use_container_width=True)
+
+    with ntab4:
+        st.markdown("#### 🔴 Escáner En Vivo NHL: Presión en Pista y Recálculo de Tiempo Restante")
+        st.caption("Ingresa el minuto jugado (de 1 a 60), goles y disparos (SOG) en vivo para detectar valor en tiempo real:")
+
+        nh1, nh2, nh3, nh4, nh5 = st.columns(5)
+        min_nhl = nh1.slider("⏱️ Minuto Jugado (0-60')", min_value=1, max_value=59, value=35)
+        g_nhl_loc_v = nh2.number_input(f"🏒 Goles {nhl_local}", min_value=0, max_value=12, value=2)
+        g_nhl_vis_v = nh3.number_input(f"🏒 Goles {nhl_visita}", min_value=0, max_value=12, value=2)
+        sog_nhl_loc_v = nh4.number_input(f"🥅 SOG {nhl_local}", min_value=0, max_value=60, value=20)
+        sog_nhl_vis_v = nh5.number_input(f"🥅 SOG {nhl_visita}", min_value=0, max_value=60, value=16)
+
+        dom_nhl_l = ((sog_nhl_loc_v + 1.0) / (sog_nhl_loc_v + sog_nhl_vis_v + 2.0)) * 100.0
+        dom_nhl_v = 100.0 - dom_nhl_l
+
+        frac_nhl_jug = max(min_nhl / 60.0, 0.08)
+        frac_nhl_rest = max((60.0 - min_nhl) / 60.0, 0.03)
+
+        ritmo_nhl_l = np.clip(0.65 + 0.35 * ((sog_nhl_loc_v / frac_nhl_jug) / max(sog_loc_in, 15.0)), 0.70, 1.45)
+        ritmo_nhl_v = np.clip(0.65 + 0.35 * ((sog_nhl_vis_v / frac_nhl_jug) / max(sog_vis_in, 15.0)), 0.70, 1.45)
+
+        # En los últimos 10 minutos, si un equipo pierde por 1 o 2 goles, saca al portero (Empty Net -> Mayor tasa de goles)
+        factor_empty_net = 1.25 if (min_nhl >= 48 and abs(g_nhl_loc_v - g_nhl_vis_v) in [1, 2]) else 1.0
+
+        lam_nhl_rest_l = max(lam_nhl_loc * frac_nhl_rest * ritmo_nhl_l * factor_empty_net, 0.05)
+        lam_nhl_rest_v = max(lam_nhl_vis * frac_nhl_rest * ritmo_nhl_v * factor_empty_net, 0.05)
+        lam_nhl_rest_tot = lam_nhl_rest_l + lam_nhl_rest_v
+
+        st.markdown(dibujar_cancha_calor(nhl_local, nhl_visita, dom_nhl_l, dom_nhl_v, ritmo_nhl_l, ritmo_nhl_v, "nhl"), unsafe_allow_html=True)
+
+        p_nhl_1mas = 1.0 - poisson.pmf(0, lam_nhl_rest_tot)
+        p_nhl_2mas = 1.0 - (poisson.pmf(0, lam_nhl_rest_tot) + poisson.pmf(1, lam_nhl_rest_tot))
+
+        mat_nhl_r = np.zeros((9, 9))
+        p_nhl_f1, p_nhl_fx, p_nhl_f2 = 0.0, 0.0, 0.0
+        for i in range(9):
+            for j in range(9):
+                prob_ij = poisson.pmf(i, lam_nhl_rest_l) * poisson.pmf(j, lam_nhl_rest_v)
+                if (g_nhl_loc_v + i) > (g_nhl_vis_v + j):
+                    p_nhl_f1 += prob_ij
+                elif (g_nhl_loc_v + i) == (g_nhl_vis_v + j):
+                    p_nhl_fx += prob_ij
+                else:
+                    p_nhl_f2 += prob_ij
+
+        p_nhl_ml_vivo_l = p_nhl_f1 + (p_nhl_fx * ratio_ot_loc)
+        p_nhl_ml_vivo_v = p_nhl_f2 + (p_nhl_fx * (1.0 - ratio_ot_loc))
+
+        g_actual_nhl = g_nhl_loc_v + g_nhl_vis_v
+        lin_nhl_v1 = g_actual_nhl + 0.5
+        lin_nhl_v2 = g_actual_nhl + 1.5
+
+        nq1, nq2, nq3 = st.columns(3)
+        c_nhl_v_o1 = nq1.number_input(f"Cuota Más de {lin_nhl_v1} Goles (+1 gol)", min_value=1.01, value=round(max(1.06, 1/max(p_nhl_1mas*1.06, 0.05)), 2), step=0.05)
+        c_nhl_v_o2 = nq2.number_input(f"Cuota Más de {lin_nhl_v2} Goles (+2 goles)", min_value=1.01, value=round(max(1.15, 1/max(p_nhl_2mas*1.06, 0.05)), 2), step=0.05)
+        c_nhl_v_ml1 = nq3.number_input(f"Cuota Moneyline En Vivo {nhl_local}", min_value=1.01, value=round(max(1.05, 1/max(p_nhl_ml_vivo_l*1.06, 0.05)), 2), step=0.05)
+
+        mercados_nhl_vivo = [
+            (f"Más de {lin_nhl_v1} Goles en 60 Min (1+ gol adicional)", p_nhl_1mas, c_nhl_v_o1),
+            (f"Más de {lin_nhl_v2} Goles en 60 Min (2+ goles adicionales)", p_nhl_2mas, c_nhl_v_o2),
+            (f"Moneyline En Vivo (Inc. OT): Gana {nhl_local}", p_nhl_ml_vivo_l, c_nhl_v_ml1),
+            (f"Moneyline En Vivo (Inc. OT): Gana {nhl_visita}", p_nhl_ml_vivo_v, round(max(1.05, 1/max(p_nhl_ml_vivo_v*1.06, 0.05)), 2)),
+            (f"Empate en 60 Minutos (Se va a Overtime partiendo de {g_nhl_loc_v}-{g_nhl_vis_v})", p_nhl_fx, round(max(1.20, 1/max(p_nhl_fx*1.07, 0.04)), 2))
+        ]
+
+        filas_nhl_v = []
+        for m, p, c in mercados_nhl_vivo:
+            justa = 1 / p if p > 0 else 99.0
+            edge = (p * c) - 1
+            filas_nhl_v.append({
+                "Mercado En Vivo NHL": m,
+                "Prob. Tiempo Restante (%)": f"{p*100:.1f}%",
+                "Cuota Justa En Vivo": f"{justa:.2f}",
+                "Cuota Betano En Vivo": f"{c:.2f}",
+                "Edge / Ventaja (%)": f"{edge*100:+.2f}%",
+                "Veredicto": "🔥 ENTRAR EN VIVO (+EV)" if edge > 0.04 else "❄️ Esperar / Sin valor"
+            })
+        df_nhl_v = pd.DataFrame(filas_nhl_v)
+        st.dataframe(df_nhl_v.style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
