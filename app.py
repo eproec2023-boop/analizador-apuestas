@@ -1165,7 +1165,7 @@ elif deporte_activo.startswith("🎾"):
     slug_b = jug_b.replace(" ", "")
     url_ta_a = f"https://www.tennisabstract.com/cgi-bin/{'player' if circuito_tenis.startswith('ATP') else 'wplayer'}.cgi?p={slug_a}"
     url_ta_b = f"https://www.tennisabstract.com/cgi-bin/{'player' if circuito_tenis.startswith('ATP') else 'wplayer'}.cgi?p={slug_b}"
-    url_ flash_h2h = f"https://www.google.com/search?q={urllib.parse.quote(jug_a + ' vs ' + jug_b + ' h2h sofascore tennis abstract')}"
+    url_flash_h2h = f"https://www.google.com/search?q={urllib.parse.quote(jug_a + ' vs ' + jug_b + ' h2h sofascore tennis abstract')}"
 
     badge_a = f"🟢 Boxscore Verificado ({stats_a.get('Partidos_Muestra',0)} PJ)" if stats_a.get("Verificado") else f"🟡 Estimado por Ranking #{stats_a.get('Rank','-')} (Circuito Challenger/ITF)"
     badge_b = f"🟢 Boxscore Verificado ({stats_b.get('Partidos_Muestra',0)} PJ)" if stats_b.get("Verificado") else f"🟡 Estimado por Ranking #{stats_b.get('Rank','-')} (Circuito Challenger/ITF)"
