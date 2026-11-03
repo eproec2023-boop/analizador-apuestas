@@ -555,7 +555,6 @@ def obtener_todos_los_tenistas_mundo(circuito):
     es_atp = circuito.startswith("ATP")
     prefijo = "atp" if es_atp else "wta"
 
-    # 1. Descargar TODOS los jugadores con Ranking Mundial Activo (ATP / WTA / Challenger / ITF)
     try:
         url_players = f"https://raw.githubusercontent.com/JeffSackmann/tennis_{prefijo}/master/{prefijo}_players.csv"
         url_ranks = f"https://raw.githubusercontent.com/JeffSackmann/tennis_{prefijo}/master/{prefijo}_rankings_current.csv"
@@ -573,7 +572,6 @@ def obtener_todos_los_tenistas_mundo(circuito):
     except Exception:
         pass
 
-    # 2. Complementar con el Ranking en Vivo de la API de ESPN
     try:
         r = requests.get(f"https://site.api.espn.com/apis/site/v2/sports/tennis/{prefijo}/rankings", timeout=6).json()
         for rank_group in r.get("rankings", []):
@@ -588,7 +586,6 @@ def obtener_todos_los_tenistas_mundo(circuito):
     except Exception:
         pass
 
-    # 3. Calcular Estadísticas REALES Partido a Partido desde Boxscores ATP/WTA & Challengers
     frames_partidos = []
     archivos_boxscore = [
         f"https://raw.githubusercontent.com/JeffSackmann/tennis_{prefijo}/master/{prefijo}_matches_2024.csv",
@@ -1171,12 +1168,12 @@ elif deporte_activo.startswith("🎾"):
     badge_b = f"🟢 Boxscore Verificado ({stats_b.get('Partidos_Muestra',0)} PJ)" if stats_b.get("Verificado") else f"🟡 Estimado por Ranking #{stats_b.get('Rank','-')} (Circuito Challenger/ITF)"
 
     st.markdown(f"""
-    <div class="audit-box">
-        <b>🛡️ Panel de Fiabilidad y Enlaces Directos de Auditoría Estadística:</b><br>
-        • <b>{jug_a}:</b> {badge_a} — Hold: <b>{hold_a:.1f}%</b> | Break: <b>{brk_a:.1f}%</b> 👉 <a href="{url_ta_a}" target="_blank">🔗 Ver Ficha Oficial en Tennis Abstract</a><br>
-        • <b>{jug_b}:</b> {badge_b} — Hold: <b>{hold_b:.1f}%</b> | Break: <b>{brk_b:.1f}%</b> 👉 <a href="{url_ta_b}" target="_blank">🔗 Ver Ficha Oficial en Tennis Abstract</a> &nbsp;|&nbsp; <a href="{url_flash_h2h}" target="_blank">🔍 Consultar H2H y Forma Reciente</a>
-    </div>
-    """, unsafe_allow_html=True)
+<div class="audit-box">
+<b>🛡️ Panel de Fiabilidad y Enlaces Directos de Auditoría Estadística:</b><br>
+• <b>{jug_a}:</b> {badge_a} — Hold: <b>{hold_a:.1f}%</b> | Break: <b>{brk_a:.1f}%</b> 👉 <a href="{url_ta_a}" target="_blank">🔗 Ver Ficha Oficial en Tennis Abstract</a><br>
+• <b>{jug_b}:</b> {badge_b} — Hold: <b>{hold_b:.1f}%</b> | Break: <b>{brk_b:.1f}%</b> 👉 <a href="{url_ta_b}" target="_blank">🔗 Ver Ficha Oficial en Tennis Abstract</a> &nbsp;|&nbsp; <a href="{url_flash_h2h}" target="_blank">🔍 Consultar H2H y Forma Reciente</a>
+</div>
+""", unsafe_allow_html=True)
 
     tk1, tk2, tk3, tk4 = st.columns(4)
     tk1.metric("🏆 Prob. Victoria", f"{p_gana_a*100:.1f}% vs {p_gana_b*100:.1f}%", f"1er Set {jug_a}: {p_set_a*100:.1f}%")
