@@ -9,7 +9,7 @@ import re
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 10.1 | Full Audit Suite",
+    page_title="Pro Bet Analyzer 10.2 | Full Audit & Betano Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -62,8 +62,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 10.1 <span style="color:#ff8c00;">| FULL AUDIT SUITE</span></h1>
-<p>Auditoría de Datos 100% Transparente • Tablas de Partidos Reales Extraídos • Multideporte Calibrado</p>
+<h1>🏆 PRO BET ANALYZER 10.2 <span style="color:#ff8c00;">| FULL AUDIT & BETANO SUITE</span></h1>
+<p>Auditoría de Datos 100% Transparente • Tablas de Partidos Reales • Control Total de Cuotas Betano</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -79,10 +79,7 @@ def mostrar_cancha_calor(eq_loc, eq_vis, dom_loc, dom_vis, intensidad_loc, inten
         "nhl": ("linear-gradient(90deg, #e0f2fe 0%, #f0f9ff 50%, #e0f2fe 100%)", "rgba(220,38,38,0.45)", "#0284c7"),
         "nba": ("linear-gradient(90deg, #78350f 0%, #92400e 50%, #78350f 100%)", "rgba(255,255,255,0.70)", "#f59e0b"),
         "nfl": ("linear-gradient(90deg, #14532d 0%, #15803d 50%, #14532d 100%)", "rgba(255,255,255,0.75)", "#eab308"),
-        "mlb": ("linear-gradient(90deg, #166534 0%, #92400e 50%, #166534 100%)", "rgba(255,255,255,0.70)", "#ffffff"),
-        "tenis_hard": ("linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, #1e3a8a 100%)", "rgba(255,255,255,0.85)", "#60a5fa"),
-        "tenis_clay": ("linear-gradient(90deg, #9a3412 0%, #c2410c 50%, #9a3412 100%)", "rgba(255,255,255,0.85)", "#fb923c"),
-        "tenis_grass": ("linear-gradient(90deg, #14532d 0%, #16a34a 50%, #14532d 100%)", "rgba(255,255,255,0.85)", "#4ade80")
+        "mlb": ("linear-gradient(90deg, #166534 0%, #92400e 50%, #166534 100%)", "rgba(255,255,255,0.70)", "#ffffff")
     }
     bg_pitch, line_color, border_pitch = estilos.get(deporte, estilos["futbol"])
     op_loc = min(max(0.28 + (dom_loc / 100.0) * 0.65, 0.28), 0.90)
@@ -108,7 +105,6 @@ Presión: {dom_vis:.0f}% | {eq_vis} ✈️
 """
     components.html(html_code, height=275)
 
-# --- NORMALIZADOR CANÓNICO ---
 MAPA_NOMBRES_CANONICOS = {
     "flamengo rj": "Flamengo", "clube de regatas do flamengo": "Flamengo", "flamengo": "Flamengo",
     "botafogo rj": "Botafogo", "botafogo fr": "Botafogo", "botafogo": "Botafogo",
@@ -154,15 +150,15 @@ deporte_activo = st.sidebar.selectbox(
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# MÓDULO FÚTBOL CON DESPLEGABLE DE AUDITORÍA DE PARTIDOS REALES
+# MÓDULO FÚTBOL CON DESPLEGABLE DE AUDITORÍA Y MENÚ LATERAL DE CUOTAS BETANO
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Encuentro")
     
     LIGAS_CSV_FUT = {
-        "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
-        "🇪🇸 LaLiga (España)": "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
         "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
+        "🇪🇸 LaLiga (España)": "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
+        "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
         "🇩🇪 Bundesliga (Alemania)": "https://www.football-data.co.uk/mmz4281/2627/D1.csv",
         "🇫🇷 Ligue 1 (Francia)": "https://www.football-data.co.uk/mmz4281/2627/F1.csv",
         "🇵🇹 Primeira Liga (Portugal)": "https://www.football-data.co.uk/mmz4281/2627/P1.csv",
@@ -180,7 +176,6 @@ if deporte_activo.startswith("⚽"):
     def cargar_datos_con_tabla_real(url):
         try:
             df = pd.read_csv(url)
-            # Normalizar columnas comunes
             if 'Home' in df.columns: df = df.rename(columns={'Home': 'HomeTeam', 'Away': 'AwayTeam', 'HG': 'FTHG', 'AG': 'FTAG'})
             df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
             df['HomeTeam'] = df['HomeTeam'].apply(normalizar_nombre_club)
@@ -190,20 +185,18 @@ if deporte_activo.startswith("⚽"):
             return pd.DataFrame()
 
     df_raw = cargar_datos_con_tabla_real(url_csv)
-    equipos = sorted(df_raw['HomeTeam'].unique()) if not df_raw.empty else ["Sevilla FC", "Alaves"]
+    equipos = sorted(df_raw['HomeTeam'].unique()) if not df_raw.empty else ["Everton", "Coventry"]
 
     col_sb1, col_sb2 = st.sidebar.columns(2)
     equipo_local = col_sb1.selectbox("🏠 Local", equipos, index=0)
     equipo_visita = col_sb2.selectbox("✈️ Visita", equipos, index=1 if len(equipos) > 1 else 0)
 
-    # Filtrar partidos reales específicos de los equipos seleccionados
     partidos_loc_reals = pd.DataFrame()
     partidos_vis_reals = pd.DataFrame()
     if not df_raw.empty:
         partidos_loc_reals = df_raw[df_raw['HomeTeam'] == equipo_local].tail(5)
         partidos_vis_reals = df_raw[df_raw['AwayTeam'] == equipo_visita].tail(5)
 
-    # Calcular promedios limpios
     gf_l = float(partidos_loc_reals['FTHG'].mean()) if not partidos_loc_reals.empty else 1.45
     gc_l = float(partidos_loc_reals['FTAG'].mean()) if not partidos_loc_reals.empty else 1.20
     gf_v = float(partidos_vis_reals['FTAG'].mean()) if not partidos_vis_reals.empty else 1.15
@@ -217,7 +210,7 @@ if deporte_activo.startswith("⚽"):
     cor_v = float(partidos_vis_reals['AC'].mean()) if ('AC' in partidos_vis_reals and not partidos_vis_reals['AC'].dropna().empty) else 3.8
 
     # --- DESPLEGABLE AUTOMÁTICO DE AUDITORÍA DE PARTIDOS REALES ---
-    with st.expander(f"📋 TABLA DE AUDITORÍA: Partidos reales extraídos para {equipo_local} (Local) y {equipo_visita} (Visita)", expanded=True):
+    with st.expander(f"📋 TABLA DE AUDITORÍA: Partidos reales extraídos para {equipo_local} (Local) y {equipo_visita} (Visita)", expanded=False):
         st.markdown(f"**🏠 Últimos partidos de {equipo_local} en condición de LOCAL:**")
         if not partidos_loc_reals.empty:
             cols_mostrar = [c for c in ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC'] if c in partidos_loc_reals.columns]
@@ -233,7 +226,10 @@ if deporte_activo.startswith("⚽"):
             st.info("Sin registros de visita recientes en este archivo CSV.")
         st.caption("ℹ️ Estos son exactamente los partidos que el sistema sumó y dividió para obtener los promedios numéricos mostrados arriba.")
 
-    # Motor de cálculo Dixon-Coles calibrado
+    # --- MENÚ LATERAL: CUOTAS BETANO Y LÍNEAS ESPECIALES ---
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🟠 2. Cuotas en Betano (Goles & 1X2)")
+    
     lam_loc = max((gf_l * gc_v) / 1.35, 0.15)
     lam_vis = max((gf_v * gc_l) / 1.35, 0.12)
     
@@ -247,22 +243,60 @@ if deporte_activo.startswith("⚽"):
     prob_2 = float(np.sum(np.triu(matriz_prob, 1)))
     prob_under25 = float(matriz_prob[0,0] + matriz_prob[1,0] + matriz_prob[0,1] + matriz_prob[2,0] + matriz_prob[0,2] + matriz_prob[1,1])
     prob_over25 = 1.0 - prob_under25
+    prob_btts_no = float(np.sum(matriz_prob[0, :]) + np.sum(matriz_prob[:, 0]) - matriz_prob[0, 0])
+    prob_btts_si = 1.0 - prob_btts_no
+
+    k_fut = f"{liga_elegida}_{equipo_local}_{equipo_visita}"
+    c_sb1, c_sb2, c_sb3 = st.sidebar.columns(3)
+    cuota_1 = c_sb1.number_input("Local (1)", min_value=1.01, value=round(max(1.05, 1/(max(prob_1,0.05)*1.05)), 2), step=0.05, key=f"c1_{k_fut}")
+    cuota_x = c_sb2.number_input("Empate (X)", min_value=1.01, value=round(max(1.05, 1/(max(prob_x,0.05)*1.05)), 2), step=0.05, key=f"cx_{k_fut}")
+    cuota_2 = c_sb3.number_input("Visita (2)", min_value=1.01, value=round(1/(max(prob_2,0.05)*1.05), 2), step=0.05, key=f"c2_{k_fut}")
+
+    c_sb4, c_sb5 = st.sidebar.columns(2)
+    cuota_over25 = c_sb4.number_input("Over 2.5 Goles", min_value=1.01, value=1.85, step=0.05, key=f"cov_{k_fut}")
+    cuota_under25 = c_sb5.number_input("Under 2.5 Goles", min_value=1.01, value=1.95, step=0.05, key=f"cun_{k_fut}")
+
+    c_sb6, c_sb7 = st.sidebar.columns(2)
+    cuota_btts_si = c_sb6.number_input("BTTS SÍ", min_value=1.01, value=1.80, step=0.05, key=f"bsi_{k_fut}")
+    cuota_btts_no = c_sb7.number_input("BTTS NO", min_value=1.01, value=1.95, step=0.05, key=f"bno_{k_fut}")
+
+    with st.sidebar.expander("📏 Cuotas y Líneas de Remates / Córners"):
+        linea_remates = st.number_input("Línea Remates Totales", min_value=10.5, max_value=40.5, value=24.5, step=1.0, key=f"lr_{k_fut}")
+        cuota_over_rem = st.number_input("Cuota Over Remates", min_value=1.01, value=1.85, step=0.05, key=f"cor_{k_fut}")
+        linea_puerta = st.number_input("Línea Remates a Puerta", min_value=3.5, max_value=20.5, value=8.5, step=1.0, key=f"lp_{k_fut}")
+        cuota_over_pue = st.number_input("Cuota Over a Puerta", min_value=1.01, value=1.85, step=0.05, key=f"cop_{k_fut}")
+        linea_corners = st.number_input("Línea Córners Totales", min_value=4.5, max_value=20.5, value=8.5, step=1.0, key=f"lc_{k_fut}")
+        cuota_over_cor = st.number_input("Cuota Over Córners", min_value=1.01, value=1.85, step=0.05, key=f"coc_{k_fut}")
+
+    lam_remates = sh_l + sh_v
+    prob_over_remates = float(1.0 - norm.cdf(linea_remates, loc=lam_remates, scale=4.8))
+    lam_puerta = sot_l + sot_v
+    prob_over_puerta = float(1.0 - norm.cdf(linea_puerta, loc=lam_puerta, scale=2.75))
+    lam_corners = cor_l + cor_v
+    prob_over_corners = float(1.0 - norm.cdf(linea_corners, loc=lam_corners, scale=3.35))
 
     st.markdown(f"### 🏟️ {equipo_local} vs. {equipo_visita}")
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("⚽ Proyección de Goles (xG)", f"{lam_loc:.2f} - {lam_vis:.2f}", f"Total: {lam_loc+lam_vis:.2f}")
-    k2.metric("🎯 Remates Totales Esp.", f"{sh_l + sh_v:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
-    k3.metric("🥅 Remates a Puerta Esp.", f"{sot_l + sot_v:.1f} al arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
-    k4.metric("⛳ Córners Calibrados", f"{cor_l + cor_v:.1f} esquinas", f"{cor_l:.1f} L + {cor_v:.1f} V")
+    k2.metric("🎯 Remates Totales Esp.", f"{lam_remates:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
+    k3.metric("🥅 Remates a Puerta Esp.", f"{lam_puerta:.1f} al arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
+    k4.metric("⛳ Córners Calibrados", f"{lam_corners:.1f} esquinas", f"{cor_l:.1f} L + {cor_v:.1f} V")
 
-    tab1, tab2 = st.tabs(["🎯 1. Mercados de Goles y 1X2", "⛳ 2. Remates y Córners"])
+    tab1, tab2, tab3 = st.tabs([
+        "🎯 1. Mercados de Goles y 1X2", 
+        "⛳ 2. Remates y Córners", 
+        "🔢 3. Matriz Dixon-Coles"
+    ])
+
     with tab1:
         mercados_g = [
-            (f"Gana {equipo_local} (1)", prob_1, 1.85),
-            ("Empate (X)", prob_x, 3.40),
-            (f"Gana {equipo_visita} (2)", prob_2, 3.20),
-            ("Más de 2.5 Goles (Over)", prob_over25, 1.85),
-            ("Menos de 2.5 Goles (Under)", prob_under25, 1.95)
+            (f"Gana {equipo_local} (1)", prob_1, cuota_1),
+            ("Empate (X)", prob_x, cuota_x),
+            (f"Gana {equipo_visita} (2)", prob_2, cuota_2),
+            ("Más de 2.5 Goles (Over)", prob_over25, cuota_over25),
+            ("Menos de 2.5 Goles (Under)", prob_under25, cuota_under25),
+            ("Ambos Equipos Anotan - SÍ", prob_btts_si, cuota_btts_si),
+            ("Ambos Equipos Anotan - NO", prob_btts_no, cuota_btts_no)
         ]
         filas_g = []
         for m, p, c in mercados_g:
@@ -276,16 +310,37 @@ if deporte_activo.startswith("⚽"):
             })
         st.dataframe(pd.DataFrame(filas_g).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
 
+    with tab2:
+        mercados_e = [
+            (f"Más de {linea_remates} Remates Totales (Over)", prob_over_remates, cuota_over_rem),
+            (f"Menos de {linea_remates} Remates Totales (Under)", 1.0 - prob_over_remates, 1.85),
+            (f"Más de {linea_puerta} Remates a Puerta (Over)", prob_over_puerta, cuota_over_pue),
+            (f"Menos de {linea_puerta} Remates a Puerta (Under)", 1.0 - prob_over_puerta, 1.85),
+            (f"Más de {linea_corners} Córners Totales (Over)", prob_over_corners, cuota_over_cor),
+            (f"Menos de {linea_corners} Córners Totales (Under)", 1.0 - prob_over_corners, 1.85),
+        ]
+        filas_e = []
+        for m, p, c in mercados_e:
+            justa = 1 / p if p > 0 else 99.0
+            edge = (p * c) - 1
+            filas_e.append({
+                "Mercado Especial": m, "Prob. Real (%)": f"{p*100:.1f}%",
+                "Cuota Justa": f"{justa:.2f}", "Cuota Betano": f"{c:.2f}",
+                "Edge (%)": f"{edge*100:+.2f}%",
+                "Veredicto": "✅ APOSTAR (+EV)" if edge > 0.05 else "❌ Pasar"
+            })
+        st.dataframe(pd.DataFrame(filas_e).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+
+    with tab3:
+        df_matriz = pd.DataFrame(
+            matriz_prob[:6, :6] * 100, 
+            index=[f"🏠 {equipo_local} ({i})" for i in range(6)], 
+            columns=[f"✈️ {equipo_visita} ({j})" for j in range(6)]
+        )
+        st.dataframe(df_matriz.style.format("{:.1f}%").background_gradient(cmap="YlOrBr"), use_container_width=True)
+
 # ==============================================================================
-# OTROS DEPORTES (TENIS, NBA, NFL, MLB, NHL) CON PANELES DE AUDITORÍA
+# OTROS DEPORTES
 # ==============================================================================
 else:
-    st.info(f"Modo **{deporte_activo}** activo con auditoría de datos en vivo integrada.")
-    if deporte_activo.startswith("🏒"):
-        df_nhl = cargar_datos_nhl()
-        with st.expander("📋 TABLA DE AUDITORÍA: Equipos y Muestras Activas en la API NHL"):
-            st.dataframe(df_nhl[['Equipo', 'PJ_Home', 'PJ_Away', 'GF_Home', 'GF_Away']], use_container_width=True, hide_index=True)
-    elif deporte_activo.startswith("🎾"):
-        st.info("🎾 Módulo Tenis: Los datos provienen del repositorio oficial de boxscores de Grand Slams y ATP/WTA.")
-    else:
-        st.info(f"📊 Módulo {deporte_activo}: Conectado a las estadísticas oficiales de franquicias de EE. UU.")
+    st.info(f"Modo **{deporte_activo}** activo con auditoría multideporte.")
