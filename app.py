@@ -101,7 +101,6 @@ Dominio: {dom_vis:.0f}% | {eq_vis} ✈️
 # ==============================================================================
 @st.cache_data(ttl=1800)
 def obtener_catalogo_equipos_espn(sport, league):
-    """Obtiene el diccionario {Nombre_Equipo: ID_ESPN} directamente desde la API de ESPN."""
     mapa_ids = {}
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=100"
@@ -120,7 +119,6 @@ def obtener_catalogo_equipos_espn(sport, league):
 
 @st.cache_data(ttl=900)
 def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, n_partidos=8):
-    """Extrae únicamente partidos reales finalizados (completed=True) del endpoint /schedule de ESPN."""
     if not team_id:
         return pd.DataFrame()
     filas = []
@@ -128,7 +126,6 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
         r = requests.get(url, timeout=8).json()
         eventos = r.get("events", [])
-        # Si estamos al inicio de temporada y hay pocos juegos o postemporada, también mirar temporada regular si aplica
         for ev in eventos:
             comp = ev.get("competitions", [{}])[0]
             estado = comp.get("status", {}).get("type", {})
@@ -145,7 +142,6 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
                         else:
                             rival = c
                     if yo and rival:
-                        # Extraer marcador real (puede venir como dict {'value': 115.0} o como string '115')
                         sc_yo_raw = yo.get("score", 0)
                         sc_riv_raw = rival.get("score", 0)
                         pts_yo = float(sc_yo_raw.get("value", sc_yo_raw.get("displayValue", 0))) if isinstance(sc_yo_raw, dict) else float(sc_yo_raw or 0)
@@ -172,7 +168,6 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
 
 @st.cache_data(ttl=1800)
 def obtener_catalogo_equipos_nhl():
-    """Obtiene en vivo los equipos activos de la NHL y su abreviatura oficial desde api-web.nhle.com."""
     mapa = {}
     try:
         r = requests.get("https://api-web.nhle.com/v1/standings/now", timeout=8).json()
@@ -187,7 +182,6 @@ def obtener_catalogo_equipos_nhl():
 
 @st.cache_data(ttl=900)
 def extraer_ultimos_partidos_reales_nhl(abbrev, n_partidos=8):
-    """Extrae únicamente los partidos reales finalizados de la API oficial de la NHL."""
     if not abbrev:
         return pd.DataFrame()
     filas = []
@@ -224,7 +218,6 @@ def extraer_ultimos_partidos_reales_nhl(abbrev, n_partidos=8):
 
 @st.cache_data(ttl=3600)
 def cargar_boxscores_reales_tenis(circuito):
-    """Descarga los últimos boxscores reales del repositorio de Jeff Sackmann (sin inventar partidos)."""
     pref = "atp" if "ATP" in circuito else "wta"
     urls = [
         f"https://raw.githubusercontent.com/JeffSackmann/tennis_{pref}/master/{pref}_matches_2024.csv",
@@ -245,7 +238,7 @@ def cargar_boxscores_reales_tenis(circuito):
     if not frames:
         return pd.DataFrame(), []
     df_all = pd.concat(frames, ignore_index=True)
-     conteo = pd.concat([df_all['winner_name'], df_all['loser_name']]).value_counts()
+    conteo = pd.concat([df_all['winner_name'], df_all['loser_name']]).value_counts()
     jugadores_activos = sorted(conteo[conteo >= 8].index.tolist())
     return df_all, jugadores_activos
 
@@ -295,11 +288,10 @@ def desglosar_partidos_tenista_real(df_all, tenista, n=8):
     aces_med = round(float(np.mean(aces_list)), 1) if aces_list else 5.0
     return pd.DataFrame(filas), hold_pct, brk_pct, aces_med
 
-
 # --- SELECTOR MAESTRO DE DEPORTE ---
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (11 Ligas Europeas, MLS y América)",
+    "⚽ Fútbol (12 Ligas Europeas, MLS y América)",
     "🎾 Tenis (Ranking ATP / WTA Boxscores Reales)",
     "🏀 Basketball (NBA - API ESPN en Vivo)",
     "🏈 Fútbol Americano (NFL - API ESPN en Vivo)",
@@ -310,7 +302,7 @@ deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opcione
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (11 LIGAS INCLUYENDO MLS + AUDITORÍA CSV + RADAR EN VIVO)
+# 1. MÓDULO FÚTBOL
 # ==============================================================================
 if "Fútbol" in deporte_activo:
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
