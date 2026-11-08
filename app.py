@@ -8,7 +8,7 @@ import re
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 11.0 | 100% Live API Audit",
+    page_title="Pro Bet Analyzer 11.1 | 100% Live API Audit",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -52,8 +52,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 11.0 <span style="color:#ff8c00;">| 100% REAL API TELEMETRY</span></h1>
-<p>Cero Datos Inventados • Conexión en Vivo a Calendarios Oficiales ESPN, NHL.com, Football-Data y Boxscores ATP/WTA</p>
+<h1>🏆 PRO BET ANALYZER 11.1 <span style="color:#ff8c00;">| 100% REAL API TELEMETRY</span></h1>
+<p>Cero Datos Inventados • 14 Ligas de Fútbol (Eredivisie y Escocia Incluidas) • Conexión en Vivo ESPN, NHL.com, Football-Data y ATP/WTA</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -291,7 +291,7 @@ def desglosar_partidos_tenista_real(df_all, tenista, n=8):
 # --- SELECTOR MAESTRO DE DEPORTE ---
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (12 Ligas Europeas, MLS y América)",
+    "⚽ Fútbol (14 Ligas Europeas, MLS y América)",
     "🎾 Tenis (Ranking ATP / WTA Boxscores Reales)",
     "🏀 Basketball (NBA - API ESPN en Vivo)",
     "🏈 Fútbol Americano (NFL - API ESPN en Vivo)",
@@ -302,7 +302,7 @@ deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opcione
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL
+# 1. MÓDULO FÚTBOL (14 LIGAS: INCLUYE EREDIVISIE Y PREMIERSHIP ESCOCIA)
 # ==============================================================================
 if "Fútbol" in deporte_activo:
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -312,7 +312,9 @@ if "Fútbol" in deporte_activo:
         "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
         "🇩🇪 Bundesliga (Alemania)": "https://www.football-data.co.uk/mmz4281/2627/D1.csv",
         "🇫🇷 Ligue 1 (Francia)": "https://www.football-data.co.uk/mmz4281/2627/F1.csv",
+        "🇳🇱 Eredivisie (Países Bajos)": "https://www.football-data.co.uk/mmz4281/2627/N1.csv",
         "🇵🇹 Primeira Liga (Portugal)": "https://www.football-data.co.uk/mmz4281/2627/P1.csv",
+        "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Premiership (Escocia)": "https://www.football-data.co.uk/mmz4281/2627/SC0.csv",
         "🇧🇪 Jupiler Pro League (Bélgica)": "https://www.football-data.co.uk/mmz4281/2627/B1.csv",
         "🇹🇷 Süper Lig (Turquía)": "https://www.football-data.co.uk/mmz4281/2627/T1.csv",
         "🇺🇸 MLS (Estados Unidos)": "https://www.football-data.co.uk/new/USA.csv",
