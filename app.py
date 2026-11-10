@@ -4,11 +4,12 @@ import pandas as pd
 import numpy as np
 from scipy.stats import poisson, norm
 import requests
+import io
 import re
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 11.3 | Bayesian Patch & Live Audit",
+    page_title="Pro Bet Analyzer 11.4 | Nations League & Multi-Sport Live",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -52,10 +53,12 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 11.3 <span style="color:#ff8c00;">| BAYESIAN CALIBRATION EDITION</span></h1>
-<p>Amortiguador Bayesiano Activo (< 6 PJ) • 14 Ligas Oficiales • Auditoría en Vivo • Radar In-Play</p>
+<h1>🏆 PRO BET ANALYZER 11.4 <span style="color:#ff8c00;">| NATIONS LEAGUE & LIVE API SUITE</span></h1>
+<p>UEFA Nations League Incluida • Amortiguador Bayesiano (< 6 PJ) • NFL y Tenis 100% Independientes • Radar En Vivo</p>
 </div>
 """, unsafe_allow_html=True)
+
+HEADERS_HTTP = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 def resaltar_valor(fila):
     veredicto = str(fila.get("Veredicto", ""))
@@ -99,12 +102,78 @@ Dominio: {dom_vis:.0f}% | {eq_vis} ✈️
 # ==============================================================================
 # FUNCIONES DE CONEXIÓN EN VIVO A APIS OFICIALES (DECLARADAS GLOBALMENTE)
 # ==============================================================================
+SELECCIONES_UEFA = [
+    "Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium",
+    "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark",
+    "England", "Estonia", "Faroe Islands", "Finland", "France", "Georgia", "Germany",
+    "Gibraltar", "Greece", "Hungary", "Iceland", "Israel", "Italy", "Kazakhstan",
+    "Kosovo", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg", "Malta", "Moldova",
+    "Montenegro", "Netherlands", "North Macedonia", "Northern Ireland", "Norway",
+    "Poland", "Portugal", "Republic of Ireland", "Romania", "San Marino", "Scotland",
+    "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland", "Turkey",
+    "Ukraine", "Wales"
+]
+
+@st.cache_data(ttl=1800)
+def cargar_datos_nations_league():
+    """Extrae partidos oficiales reales de selecciones UEFA (Nations League / Euro / Clasificatorias)."""
+    urls_int = [
+        "https://raw.githubusercontent.com/martj42/international_results/master/results.csv",
+        "https://cdn.jsdelivr.net/gh/martj42/international_results@master/results.csv"
+    ]
+    for u in urls_int:
+        try:
+            resp = requests.get(u, headers=HEADERS_HTTP, timeout=10)
+            if resp.status_code == 200:
+                df = pd.read_csv(io.StringIO(resp.text))
+                df = df[df['date'] >= '2022-01-01'].copy()
+                # Homologar nombres comunes
+                reemplazos = {"Czech Republic": "Czechia"}
+                df['home_team'] = df['home_team'].replace(reemplazos)
+                df['away_team'] = df['away_team'].replace(reemplazos)
+                df = df[df['home_team'].isin(SELECCIONES_UEFA) & df['away_team'].isin(SELECCIONES_UEFA)]
+                df = df.rename(columns={
+                    'date': 'Date', 'home_team': 'HomeTeam', 'away_team': 'AwayTeam',
+                    'home_score': 'FTHG', 'away_score': 'FTAG', 'tournament': 'Tournament'
+                })
+                df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
+                df['FTHG'] = df['FTHG'].astype(int)
+                df['FTAG'] = df['FTAG'].astype(int)
+                if not df.empty:
+                    return df
+        except Exception:
+            pass
+
+    # Fallback en vivo desde API ESPN UEFA Nations League si GitHub falla
+    filas_espn = []
+    try:
+        r = requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.nations/scoreboard?limit=100", headers=HEADERS_HTTP, timeout=8).json()
+        for ev in r.get("events", []):
+            comp = ev.get("competitions", [{}])[0]
+            if comp.get("status", {}).get("type", {}).get("completed", False):
+                fecha = ev.get("date", "")[:10]
+                cs = comp.get("competitors", [])
+                if len(cs) == 2:
+                    h = next((c for c in cs if c.get("homeAway") == "home"), cs[0])
+                    a = next((c for c in cs if c.get("homeAway") == "away"), cs[1])
+                    filas_espn.append({
+                        "Date": fecha,
+                        "HomeTeam": h.get("team", {}).get("displayName", ""),
+                        "AwayTeam": a.get("team", {}).get("displayName", ""),
+                        "FTHG": int(float(h.get("score", 0) or 0)),
+                        "FTAG": int(float(a.get("score", 0) or 0)),
+                        "Tournament": "UEFA Nations League (ESPN API)"
+                    })
+    except Exception:
+        pass
+    return pd.DataFrame(filas_espn)
+
 @st.cache_data(ttl=1800)
 def obtener_catalogo_equipos_espn(sport, league):
     mapa_ids = {}
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=100"
-        r = requests.get(url, timeout=8).json()
+        r = requests.get(url, headers=HEADERS_HTTP, timeout=8).json()
         for sp in r.get("sports", []):
             for lg in sp.get("leagues", []):
                 for t_wrap in lg.get("teams", []):
@@ -124,7 +193,7 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
     filas = []
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
-        r = requests.get(url, timeout=8).json()
+        r = requests.get(url, headers=HEADERS_HTTP, timeout=8).json()
         eventos = r.get("events", [])
         for ev in eventos:
             comp = ev.get("competitions", [{}])[0]
@@ -170,7 +239,7 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
 def obtener_catalogo_equipos_nhl():
     mapa = {}
     try:
-        r = requests.get("https://api-web.nhle.com/v1/standings/now", timeout=8).json()
+        r = requests.get("https://api-web.nhle.com/v1/standings/now", headers=HEADERS_HTTP, timeout=8).json()
         for t in r.get("standings", []):
             nombre = t.get("teamName", {}).get("default", "")
             abbrev = t.get("teamAbbrev", {}).get("default", "")
@@ -186,7 +255,7 @@ def extraer_ultimos_partidos_reales_nhl(abbrev, n_partidos=8):
         return pd.DataFrame()
     filas = []
     try:
-        r = requests.get(f"https://api-web.nhle.com/v1/club-schedule-season/{abbrev}/now", timeout=8).json()
+        r = requests.get(f"https://api-web.nhle.com/v1/club-schedule-season/{abbrev}/now", headers=HEADERS_HTTP, timeout=8).json()
         for g in r.get("games", []):
             if g.get("gameState") in ["OFF", "FINAL"]:
                 fecha = g.get("gameDate", "")
@@ -218,33 +287,53 @@ def extraer_ultimos_partidos_reales_nhl(abbrev, n_partidos=8):
 
 @st.cache_data(ttl=3600)
 def cargar_boxscores_reales_tenis(circuito):
+    """Descarga boxscores reales de ATP/WTA con cabeceras HTTP anti-bloqueo y fallback a API ESPN."""
     pref = "atp" if "ATP" in circuito else "wta"
     urls = [
         f"https://raw.githubusercontent.com/JeffSackmann/tennis_{pref}/master/{pref}_matches_2024.csv",
-        f"https://raw.githubusercontent.com/JeffSackmann/tennis_{pref}/master/{pref}_matches_2023.csv"
+        f"https://raw.githubusercontent.com/JeffSackmann/tennis_{pref}/master/{pref}_matches_2023.csv",
+        f"https://cdn.jsdelivr.net/gh/JeffSackmann/tennis_{pref}@master/{pref}_matches_2024.csv"
     ]
-    cols = [
+    cols_deseadas = {
         'tourney_date', 'tourney_name', 'surface', 'winner_name', 'loser_name', 'score',
         'w_ace', 'w_svpt', 'w_1stWon', 'w_2ndWon', 'w_SvGms', 'w_bpSaved', 'w_bpFaced',
         'l_ace', 'l_svpt', 'l_1stWon', 'l_2ndWon', 'l_SvGms', 'l_bpSaved', 'l_bpFaced'
-    ]
+    }
     frames = []
     for u in urls:
         try:
-            df_u = pd.read_csv(u, usecols=cols, low_memory=False).dropna(subset=['winner_name', 'loser_name'])
-            frames.append(df_u)
+            resp = requests.get(u, headers=HEADERS_HTTP, timeout=10)
+            if resp.status_code == 200:
+                df_u = pd.read_csv(io.StringIO(resp.text), usecols=lambda c: c in cols_deseadas, low_memory=False)
+                df_u = df_u.dropna(subset=['winner_name', 'loser_name'])
+                frames.append(df_u)
+                if len(frames) >= 2:
+                    break
         except Exception:
             pass
-    if not frames:
-        return pd.DataFrame(), []
-    df_all = pd.concat(frames, ignore_index=True)
-    conteo = pd.concat([df_all['winner_name'], df_all['loser_name']]).value_counts()
-    jugadores_activos = sorted(conteo[conteo >= 8].index.tolist())
-    return df_all, jugadores_activos
+
+    if frames:
+        df_all = pd.concat(frames, ignore_index=True)
+        conteo = pd.concat([df_all['winner_name'], df_all['loser_name']]).value_counts()
+        jugadores_activos = sorted(conteo[conteo >= 5].index.tolist())
+        return df_all, jugadores_activos
+
+    # Si GitHub está caído, consulta Rankings Oficiales de ESPN en vivo
+    jugadores_espn = []
+    try:
+        r = requests.get(f"https://site.api.espn.com/apis/site/v2/sports/tennis/{pref}/rankings", headers=HEADERS_HTTP, timeout=8).json()
+        for rg in r.get("rankings", []):
+            for rk in rg.get("ranks", []):
+                nom = rk.get("athlete", {}).get("displayName")
+                if nom:
+                    jugadores_espn.append(nom)
+    except Exception:
+        pass
+    return pd.DataFrame(), sorted(list(set(jugadores_espn)))
 
 def desglosar_partidos_tenista_real(df_all, tenista, n=8):
     if df_all.empty:
-        return pd.DataFrame(), 80.0, 24.0, 5.0
+        return pd.DataFrame(), 82.0, 25.0, 5.5
     sub = df_all[(df_all['winner_name'] == tenista) | (df_all['loser_name'] == tenista)].copy()
     sub = sub.sort_values('tourney_date').tail(n)
     filas = []
@@ -252,32 +341,36 @@ def desglosar_partidos_tenista_real(df_all, tenista, n=8):
     for _, r in sub.iterrows():
         gano = (r['winner_name'] == tenista)
         rival = r['loser_name'] if gano else r['winner_name']
-        aces = r['w_ace'] if gano else r['l_ace']
-        svpt = r['w_svpt'] if gano else r['l_svpt']
-        spw = (r['w_1stWon'] + r['w_2ndWon']) if gano else (r['l_1stWon'] + r['l_2ndWon'])
-        rgms = r['l_SvGms'] if gano else r['w_SvGms']
-        bp_won = (r['l_bpFaced'] - r['l_bpSaved']) if gano else (r['w_bpFaced'] - r['w_bpSaved'])
+        aces = r.get('w_ace') if gano else r.get('l_ace')
+        svpt = r.get('w_svpt') if gano else r.get('l_svpt')
+        w1 = r.get('w_1stWon', 0) if gano else r.get('l_1stWon', 0)
+        w2 = r.get('w_2ndWon', 0) if gano else r.get('l_2ndWon', 0)
+        spw = (w1 or 0) + (w2 or 0)
+        rgms = r.get('l_SvGms') if gano else r.get('w_SvGms')
+        bp_f = r.get('l_bpFaced', 0) if gano else r.get('w_bpFaced', 0)
+        bp_s = r.get('l_bpSaved', 0) if gano else r.get('w_bpSaved', 0)
+        bp_won = (bp_f or 0) - (bp_s or 0)
 
-        if pd.notna(svpt) and svpt > 0:
+        if pd.notna(svpt) and float(svpt) > 0:
             spw_tot += float(spw)
             svpt_tot += float(svpt)
-        if pd.notna(rgms) and rgms > 0 and pd.notna(bp_won):
+        if pd.notna(rgms) and float(rgms) > 0 and pd.notna(bp_won):
             brk_tot += float(bp_won)
             rgms_tot += float(rgms)
         if pd.notna(aces):
             aces_list.append(float(aces))
 
-        f_str = str(r['tourney_date'])
+        f_str = str(r.get('tourney_date', ''))
         f_fmt = f"{f_str[:4]}-{f_str[4:6]}-{f_str[6:8]}" if len(f_str) >= 8 else f_str
         filas.append({
             "Fecha Torneo": f_fmt,
-            "Torneo": str(r['tourney_name']),
-            "Superficie": str(r['surface']),
+            "Torneo": str(r.get('tourney_name', '')),
+            "Superficie": str(r.get('surface', '')),
             "Rival": rival,
             "Resultado": "✅ Victoria" if gano else "❌ Derrota",
-            "Marcador Oficial": str(r['score']),
+            "Marcador Oficial": str(r.get('score', '')),
             "Aces": int(aces) if pd.notna(aces) else 0,
-            "Quiebres Logrados": int(bp_won) if pd.notna(bp_won) else 0
+            "Quiebres Logrados": int(max(bp_won, 0)) if pd.notna(bp_won) else 0
         })
     p_srv = (spw_tot / svpt_tot) if svpt_tot > 0 else 0.64
     p = float(np.clip(p_srv, 0.45, 0.82))
@@ -291,7 +384,7 @@ def desglosar_partidos_tenista_real(df_all, tenista, n=8):
 # --- SELECTOR MAESTRO DE DEPORTE ---
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (14 Ligas Europeas, MLS y América)",
+    "⚽ Fútbol (15 Ligas + UEFA Nations League)",
     "🎾 Tenis (Ranking ATP / WTA Boxscores Reales)",
     "🏀 Basketball (NBA - API ESPN en Vivo)",
     "🏈 Fútbol Americano (NFL - API ESPN en Vivo)",
@@ -302,11 +395,12 @@ deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opcione
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL CON PARCHE AMORTIGUADOR BAYESIANO (< 6 PJ)
+# 1. MÓDULO FÚTBOL (15 COMPETICIONES INCLUYENDO UEFA NATIONS LEAGUE)
 # ==============================================================================
-if "Fútbol" in deporte_activo:
+if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
     LIGAS_FUT = {
+        "🌍 UEFA Nations League (Selecciones UEFA)": "NATIONS_LEAGUE",
         "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
         "🇪🇸 LaLiga (España)": "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
         "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
@@ -322,27 +416,31 @@ if "Fútbol" in deporte_activo:
         "🇦🇷 Liga Profesional (Argentina)": "https://www.football-data.co.uk/new/ARG.csv",
         "🇲🇽 Liga MX (México)": "https://www.football-data.co.uk/new/MEX.csv"
     }
-    liga_sel = st.sidebar.selectbox("Selecciona la Liga:", list(LIGAS_FUT.keys()))
+    liga_sel = st.sidebar.selectbox("Selecciona la Liga / Torneo:", list(LIGAS_FUT.keys()))
 
     @st.cache_data(ttl=1800)
     def cargar_datos_futbol_real(url):
+        if url == "NATIONS_LEAGUE":
+            return cargar_datos_nations_league()
         try:
-            df = pd.read_csv(url)
+            resp = requests.get(url, headers=HEADERS_HTTP, timeout=10)
+            df = pd.read_csv(io.StringIO(resp.text))
             if 'Home' in df.columns:
                 df = df.rename(columns={'Home': 'HomeTeam', 'Away': 'AwayTeam', 'HG': 'FTHG', 'AG': 'FTAG'})
             df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
             if len(df) < 5 and "/2627/" in url:
-                df = pd.read_csv(url.replace("/2627/", "/2526/")).dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
+                resp_b = requests.get(url.replace("/2627/", "/2526/"), headers=HEADERS_HTTP, timeout=10)
+                df = pd.read_csv(io.StringIO(resp_b.text)).dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
             return df
         except Exception:
             return pd.DataFrame()
 
     df_csv = cargar_datos_futbol_real(LIGAS_FUT[liga_sel])
     if df_csv.empty:
-        st.error("No se pudo conectar al servidor de Football-Data.co.uk en este momento.")
+        st.error("No se pudo conectar al servidor de datos en este momento.")
         st.stop()
 
-    equipos_fut = sorted(df_csv['HomeTeam'].unique())
+    equipos_fut = sorted(list(set(df_csv['HomeTeam'].unique()).union(set(df_csv['AwayTeam'].unique()))))
     c1, c2 = st.sidebar.columns(2)
     eq_l = c1.selectbox("🏠 Local", equipos_fut, index=0)
     eq_v = c2.selectbox("✈️ Visita", equipos_fut, index=1 if len(equipos_fut) > 1 else 0)
@@ -388,15 +486,15 @@ if "Fútbol" in deporte_activo:
         if tiene_tiros_csv:
             st.success("✅ Fuente con Telemetría Completa (Opta / Football-Data): Goles (FTHG/FTAG), Remates (HS/AS), Remates a Puerta (HST/AST) y Córners (HC/AC) 100% reales.")
         else:
-            st.warning("⚠️ Fuente de América (MLS / Liga MX / Brasil / Argentina): El archivo oficial de Football-Data.co.uk solo publica Goles Oficiales (FTHG/FTAG). No apuestes a Remates o Córners en esta liga sin verificar conteos externos.")
+            st.warning("⚠️ Torneo Internacional / Liga de América: El registro oficial público contiene Goles Reales (FTHG/FTAG) verificados partido a partido. Los tiros y córners son proyecciones matemáticas.")
         
         if usar_amortiguador:
             st.info(f"🛡️ **Amortiguador Bayesiano Activo:** Goles {eq_l} calibrados a `{gf_l:.2f} GF / {gc_l:.2f} GC` (peso muestra {peso_l*100:.0f}%) | {eq_v} calibrados a `{gf_v:.2f} GF / {gc_v:.2f} GC` (peso muestra {peso_v*100:.0f}%).")
 
-        cols_l = [c for c in ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC'] if c in p_l.columns]
+        cols_l = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC'] if c in p_l.columns]
         st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL:**")
         st.dataframe(p_l[cols_l], use_container_width=True, hide_index=True)
-        cols_v = [c for c in ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC'] if c in p_v.columns]
+        cols_v = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC'] if c in p_v.columns]
         st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE:**")
         st.dataframe(p_v[cols_v], use_container_width=True, hide_index=True)
 
@@ -496,19 +594,21 @@ if "Fútbol" in deporte_activo:
 
 
 # ==============================================================================
-# 2. MÓDULO TENIS (100% PARTIDOS REALES DE BOXSCORE CSV - CERO INVENTADOS)
+# 2. MÓDULO TENIS (100% INDEPENDIENTE + ANTI-BLOQUEO GITHUB/ESPN)
 # ==============================================================================
-elif "Tenis" in deporte_activo:
+elif deporte_activo.startswith("🎾"):
     st.sidebar.markdown("### 🎾 1. Circuito y Tenistas")
     circuito = st.sidebar.radio("Circuito:", ["ATP (Masculino)", "WTA (Femenino)"])
     df_tenis_raw, lista_tenistas = cargar_boxscores_reales_tenis(circuito)
 
     if not lista_tenistas:
-        st.error("No se pudo descargar el archivo de boxscores de GitHub (JeffSackmann).")
+        st.error("No se pudo conectar al servidor de Tenis en este momento.")
         st.stop()
 
-    idx_a = lista_tenistas.index("Jannik Sinner") if "Jannik Sinner" in lista_tenistas else 0
-    idx_b = lista_tenistas.index("Carlos Alcaraz") if "Carlos Alcaraz" in lista_tenistas else (1 if len(lista_tenistas) > 1 else 0)
+    def_a = "Jannik Sinner" if "ATP" in circuito else "Aryna Sabalenka"
+    def_b = "Carlos Alcaraz" if "ATP" in circuito else "Iga Swiatek"
+    idx_a = lista_tenistas.index(def_a) if def_a in lista_tenistas else 0
+    idx_b = lista_tenistas.index(def_b) if def_b in lista_tenistas else (1 if len(lista_tenistas) > 1 else 0)
 
     jug_a = st.sidebar.selectbox("🎾 Tenista A", lista_tenistas, index=idx_a)
     jug_b = st.sidebar.selectbox("🎾 Tenista B", lista_tenistas, index=idx_b)
@@ -548,12 +648,12 @@ elif "Tenis" in deporte_activo:
 
 
 # ==============================================================================
-# 3. MÓDULOS NBA, NFL Y MLB (100% CONECTADOS A API ESPN SCHEDULE EN VIVO)
+# 3. MÓDULOS NBA (🏀), NFL (🏈) Y MLB (⚾) - SEPARADOS SIN COLISIÓN CON FÚTBOL
 # ==============================================================================
-elif ("NBA" in deporte_activo) or ("NFL" in deporte_activo) or ("MLB" in deporte_activo):
-    if "NBA" in deporte_activo:
+elif deporte_activo.startswith(("🏀", "🏈", "⚾")):
+    if deporte_activo.startswith("🏀"):
         sport_p, league_c, nom_dep, sigma_m, cancha_k = "basketball", "nba", "NBA Basketball", 11.8, "nba"
-    elif "NFL" in deporte_activo:
+    elif deporte_activo.startswith("🏈"):
         sport_p, league_c, nom_dep, sigma_m, cancha_k = "football", "nfl", "NFL Fútbol Americano", 13.2, "nfl"
     else:
         sport_p, league_c, nom_dep, sigma_m, cancha_k = "baseball", "mlb", "MLB Béisbol", 3.2, "mlb"
@@ -572,23 +672,24 @@ elif ("NBA" in deporte_activo) or ("NFL" in deporte_activo) or ("MLB" in deporte
     df_real_v = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_v], u_v, 8)
 
     with st.expander(f"📋 TABLA DE AUDITORÍA {nom_dep}: Últimos partidos oficiales extraídos en vivo de ESPN ({u_l} vs {u_v})", expanded=True):
-        st.success("✅ Datos extraídos 100% en tiempo real desde la API Oficial de Calendario de ESPN (`site.api.espn.com`). Cero resultados pregrabados.")
+        st.success(f"✅ Datos de {nom_dep} extraídos 100% en tiempo real desde la API Oficial de ESPN (`site.api.espn.com`).")
         st.markdown(f"**🏠 Últimos {len(df_real_l)} partidos finalizados de {u_l}:**")
         if not df_real_l.empty:
             st.dataframe(df_real_l, use_container_width=True, hide_index=True)
         else:
-            st.warning(f"ESPN no reporta partidos finalizados en la fase actual para {u_l}.")
+            st.warning(f"ESPN no reporta partidos finalizados recientes para {u_l}.")
 
         st.markdown(f"**✈️ Últimos {len(df_real_v)} partidos finalizados de {u_v}:**")
         if not df_real_v.empty:
             st.dataframe(df_real_v, use_container_width=True, hide_index=True)
         else:
-            st.warning(f"ESPN no reporta partidos finalizados en la fase actual para {u_v}.")
+            st.warning(f"ESPN no reporta partidos finalizados recientes para {u_v}.")
 
-    pf_l = float(df_real_l["Anotados"].mean()) if not df_real_l.empty else 112.0
-    pa_l = float(df_real_l["Recibidos"].mean()) if not df_real_l.empty else 112.0
-    pf_v = float(df_real_v["Anotados"].mean()) if not df_real_v.empty else 110.0
-    pa_v = float(df_real_v["Recibidos"].mean()) if not df_real_v.empty else 110.0
+    def_pts = 112.0 if sport_p == "basketball" else (22.5 if sport_p == "football" else 4.5)
+    pf_l = float(df_real_l["Anotados"].mean()) if not df_real_l.empty else def_pts
+    pa_l = float(df_real_l["Recibidos"].mean()) if not df_real_l.empty else def_pts
+    pf_v = float(df_real_v["Anotados"].mean()) if not df_real_v.empty else def_pts
+    pa_v = float(df_real_v["Recibidos"].mean()) if not df_real_v.empty else def_pts
 
     proy_l = (pf_l + pa_v) / 2.0
     proy_v = (pf_v + pa_l) / 2.0
