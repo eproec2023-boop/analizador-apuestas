@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 11.8 | Surface Aces & Live API Suite",
+    page_title="Pro Bet Analyzer 11.9 | NHL Home/Away Split & Live Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -64,8 +64,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 11.8 <span style="color:#ff8c00;">| TENNIS ACES BY SURFACE & LIVE API</span></h1>
-<p>Proyección de Aces Calibrada por Tipo de Cancha (Dura, Arcilla, Césped) • 15 Ligas Fútbol + Nations League • Radar In-Play</p>
+<h1>🏆 PRO BET ANALYZER 11.9 <span style="color:#ff8c00;">| NHL HOME/AWAY SPLIT & LIVE SUITE</span></h1>
+<p>Auditoría NHL Separada por Localía y Visita + Amortiguador Bayesiano • Tenis Aces por Superficie • 15 Ligas Fútbol • Radar In-Play</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -233,7 +233,11 @@ def obtener_catalogo_equipos_nhl():
     return mapa
 
 @st.cache_data(ttl=900)
-def extraer_ultimos_partidos_reales_nhl(abbrev, n_partidos=8):
+def extraer_ultimos_partidos_nhl_por_condicion(abbrev, condicion="HOME", n_partidos=5):
+    """
+    Extrae exclusivamente los últimos N partidos reales como LOCAL ('HOME') o VISITANTE ('AWAY')
+    desde la API oficial de la NHL (api-web.nhle.com/v1/club-schedule-season).
+    """
     if not abbrev:
         return pd.DataFrame()
     filas = []
@@ -249,16 +253,26 @@ def extraer_ultimos_partidos_reales_nhl(abbrev, n_partidos=8):
                 h_sc = int(h_tm.get("score", 0))
                 a_sc = int(a_tm.get("score", 0))
                 es_local = (h_ab == abbrev)
+
+                if condicion == "HOME" and not es_local:
+                    continue
+                if condicion == "AWAY" and es_local:
+                    continue
+
                 gf = h_sc if es_local else a_sc
                 gc = a_sc if es_local else h_sc
                 rival = a_ab if es_local else h_ab
+                tipo_cierre = g.get("periodDescriptor", {}).get("periodType", "REG")
+                cierre_lbl = "60' Reg." if tipo_cierre == "REG" else f"Prórroga ({tipo_cierre})"
+
                 filas.append({
                     "Fecha": fecha,
-                    "Condición": "🏠 Casa" if es_local else "✈️ Ruta",
+                    "Condición": "🏠 Local" if es_local else "✈️ Visita",
                     "Rival": rival,
                     "Goles a Favor": gf,
                     "Goles en Contra": gc,
                     "Total Goles": gf + gc,
+                    "Definición": cierre_lbl,
                     "Resultado": "✅ Victoria" if gf > gc else "❌ Derrota"
                 })
     except Exception:
@@ -271,9 +285,7 @@ def extraer_ultimos_partidos_reales_nhl(abbrev, n_partidos=8):
 # ==============================================================================
 # MOTOR DE TENIS CONECTADO EN VIVO A ESPN + MODELO DE ACES POR SUPERFICIE
 # ==============================================================================
-# Tasas auditadas de Aces por partido (en cancha dura a 3 sets) para tenistas principales ATP/WTA
 ACES_BASE_AUDITADOS = {
-    # ATP
     "Jannik Sinner": 8.8, "Carlos Alcaraz": 6.4, "Alexander Zverev": 10.8, "Novak Djokovic": 7.6,
     "Daniil Medvedev": 8.9, "Taylor Fritz": 11.8, "Casper Ruud": 6.2, "Andrey Rublev": 9.1,
     "Alex de Minaur": 5.4, "Grigor Dimitrov": 8.7, "Stefanos Tsitsipas": 8.4, "Tommy Paul": 7.2,
@@ -282,7 +294,6 @@ ACES_BASE_AUDITADOS = {
     "Sebastian Korda": 8.2, "Alexei Popyrin": 11.2, "Felix Auger-Aliassime": 10.9, "Karen Khachanov": 8.6,
     "Matteo Berrettini": 12.4, "Nicolas Jarry": 11.5, "Alexander Bublik": 13.4, "Reilly Opelka": 16.5,
     "Giovanni Mpetshi Perricard": 15.8, "Jakub Mensik": 10.2, "Tallon Griekspoor": 9.8,
-    # WTA
     "Aryna Sabalenka": 6.9, "Iga Swiatek": 3.3, "Coco Gauff": 4.6, "Jessica Pegula": 4.2,
     "Elena Rybakina": 8.8, "Jasmine Paolini": 2.4, "Qinwen Zheng": 7.6, "Emma Navarro": 2.9,
     "Daria Kasatkina": 2.1, "Danielle Collins": 5.1, "Paula Badosa": 5.8, "Marta Kostyuk": 4.4,
@@ -389,9 +400,6 @@ def obtener_partidos_reales_espn_tenista(circuito, athlete_id, nombre_tenista):
     return df_p
 
 def calcular_perfil_superficie_real(df_partidos, rank_actual, circuito, nombre_tenista):
-    """
-    Calcula Hold%, Break%, % Victorias y Aces Esperados por tipo de cancha (Dura, Arcilla y Césped).
-    """
     es_atp = "ATP" in circuito
     r_clip = min(max(int(rank_actual), 1), 300)
     deg = np.log10(r_clip) / np.log10(300)
@@ -408,24 +416,10 @@ def calcular_perfil_superficie_real(df_partidos, rank_actual, circuito, nombre_t
     aces_hard = ACES_BASE_AUDITADOS.get(nombre_tenista, aces_hard_default)
     win_base = round(float(np.clip(78.0 - (deg * 28.0), 42.0, 86.0)), 1)
 
-    # Coeficientes de Aces según velocidad de bote en cada superficie:
-    # Cancha Dura = 1.00x | Arcilla (Clay) = 0.72x | Césped (Grass) = 1.32x
     stats_sup = {
-        "Hard": {
-            "Hold": h_hard_base, "Break": b_hard_base, "G": 0, "P": 0,
-            "WinPct": win_base, "Juegos_Prom": 22.4 if es_atp else 21.2,
-            "Aces": round(aces_hard * 1.00, 1)
-        },
-        "Clay": {
-            "Hold": round(h_hard_base - 3.2, 1), "Break": round(b_hard_base + 2.8, 1), "G": 0, "P": 0,
-            "WinPct": round(win_base - 1.5, 1), "Juegos_Prom": 22.0 if es_atp else 20.8,
-            "Aces": round(aces_hard * 0.72, 1)
-        },
-        "Grass": {
-            "Hold": round(h_hard_base + 2.6, 1), "Break": round(b_hard_base - 3.0, 1), "G": 0, "P": 0,
-            "WinPct": round(win_base + 1.0, 1), "Juegos_Prom": 23.4 if es_atp else 21.8,
-            "Aces": round(aces_hard * 1.32, 1)
-        }
+        "Hard": {"Hold": h_hard_base, "Break": b_hard_base, "G": 0, "P": 0, "WinPct": win_base, "Juegos_Prom": 22.4 if es_atp else 21.2, "Aces": round(aces_hard * 1.00, 1)},
+        "Clay": {"Hold": round(h_hard_base - 3.2, 1), "Break": round(b_hard_base + 2.8, 1), "G": 0, "P": 0, "WinPct": round(win_base - 1.5, 1), "Juegos_Prom": 22.0 if es_atp else 20.8, "Aces": round(aces_hard * 0.72, 1)},
+        "Grass": {"Hold": round(h_hard_base + 2.6, 1), "Break": round(b_hard_base - 3.0, 1), "G": 0, "P": 0, "WinPct": round(win_base + 1.0, 1), "Juegos_Prom": 23.4 if es_atp else 21.8, "Aces": round(aces_hard * 1.32, 1)}
     }
 
     if not df_partidos.empty and "Superficie" in df_partidos.columns:
@@ -457,7 +451,7 @@ opciones_deportes = [
     "🏀 Basketball (NBA - API ESPN en Vivo)",
     "🏈 Fútbol Americano (NFL - API ESPN en Vivo)",
     "⚾ Béisbol (MLB - API ESPN en Vivo)",
-    "🏒 Hockey sobre Hielo (NHL - API NHL.com en Vivo)"
+    "🏒 Hockey sobre Hielo (NHL - Local vs Visita en Vivo)"
 ]
 deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opciones_deportes, index=0)
 st.sidebar.markdown("---")
@@ -714,7 +708,6 @@ elif deporte_activo.startswith("🎾"):
     hold_b_sup = sup_b[clave_sup]["Hold"]
     brk_b_sup = sup_b[clave_sup]["Break"]
 
-    # Cálculo de Probabilidad Real combinando Hold/Break en la superficie + Ranking Oficial
     hold_eff_a = (hold_a_sup + (100.0 - brk_b_sup)) / 2.0
     hold_eff_b = (hold_b_sup + (100.0 - brk_a_sup)) / 2.0
     bono_rank_a = (np.log10(max(rank_b, 1)) - np.log10(max(rank_a, 1))) * 4.8
@@ -734,9 +727,7 @@ elif deporte_activo.startswith("🎾"):
 
     juegos_totales_esp = round((sup_a[clave_sup]["Juegos_Prom"] + sup_b[clave_sup]["Juegos_Prom"]) / 2.0, 1)
 
-    # --- CÁLCULO DE ACES ESPERADOS SEGÚN LA SUPERFICIE Y LA DEFENSA AL RESTO DEL RIVAL ---
     media_brk_circuito = 24.0 if "ATP" in circuito else 35.0
-    # Si el rival tiene un Break% menor al promedio (peor devolución), concede más Aces; si devuelve mejor, reduce Aces
     ajuste_resto_vs_a = np.clip(1.0 + ((media_brk_circuito - brk_b_sup) / 100.0) * 1.15, 0.78, 1.25)
     ajuste_resto_vs_b = np.clip(1.0 + ((media_brk_circuito - brk_a_sup) / 100.0) * 1.15, 0.78, 1.25)
 
@@ -812,7 +803,6 @@ elif deporte_activo.startswith("🎾"):
         c_un_aces = st.number_input(f"Cuota Menos de {linea_aces_ten} Aces (Under)", 1.01, 15.0, 1.85, 0.05)
 
     p_over_juegos = float(1.0 - norm.cdf(linea_j_ten, loc=juegos_totales_esp, scale=3.4))
-    # Probabilidad Poisson/Normal para Aces totales en la superficie seleccionada
     sigma_aces = max(np.sqrt(aces_totales_esp * 1.35), 2.2)
     p_over_aces = float(1.0 - norm.cdf(linea_aces_ten, loc=aces_totales_esp, scale=sigma_aces))
     p_under_aces = 1.0 - p_over_aces
@@ -915,7 +905,7 @@ elif deporte_activo.startswith(("🏀", "🏈", "⚾")):
 
 
 # ==============================================================================
-# 4. MÓDULO HOCKEY SOBRE HIELO (NHL - API OFICIAL NHL.COM EN VIVO)
+# 4. MÓDULO HOCKEY SOBRE HIELO (NHL - AUDITORÍA LOCAL VS VISITA + BAYESIANO)
 # ==============================================================================
 else:
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
@@ -925,26 +915,57 @@ else:
         st.stop()
 
     lista_nhl = sorted(list(mapa_nhl.keys()))
-    nh_l = st.sidebar.selectbox("🏠 Local (Home)", lista_nhl, index=0)
-    nh_v = st.sidebar.selectbox("✈️ Visita (Road)", lista_nhl, index=1 if len(lista_nhl) > 1 else 0)
+    col_nhl1, col_nhl2 = st.sidebar.columns(2)
+    nh_l = col_nhl1.selectbox("🏠 Local (Home)", lista_nhl, index=0)
+    nh_v = col_nhl2.selectbox("✈️ Visita (Road)", lista_nhl, index=1 if len(lista_nhl) > 1 else 0)
 
-    df_nhl_l = extraer_ultimos_partidos_reales_nhl(mapa_nhl[nh_l], 8)
-    df_nhl_v = extraer_ultimos_partidos_reales_nhl(mapa_nhl[nh_v], 8)
+    usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Últimos partidos oficiales extraídos de NHL.com ({nh_l} vs {nh_v})", expanded=True):
-        st.success("✅ Datos extraídos en tiempo real desde `api-web.nhle.com/v1/club-schedule-season`.")
-        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos finalizados de {nh_l}:**")
-        st.dataframe(df_nhl_l, use_container_width=True, hide_index=True)
-        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos finalizados de {nh_v}:**")
-        st.dataframe(df_nhl_v, use_container_width=True, hide_index=True)
+    # Extraer partidos reales estrictamente filtrados por condición (Local vs. Visita)
+    df_nhl_l = extraer_ultimos_partidos_nhl_por_condicion(mapa_nhl[nh_l], condicion="HOME", n_partidos=5)
+    df_nhl_v = extraer_ultimos_partidos_nhl_por_condicion(mapa_nhl[nh_v], condicion="AWAY", n_partidos=5)
 
-    gf_nhl_l = float(df_nhl_l["Goles a Favor"].mean()) if not df_nhl_l.empty else 3.1
-    gc_nhl_l = float(df_nhl_l["Goles en Contra"].mean()) if not df_nhl_l.empty else 3.0
-    gf_nhl_v = float(df_nhl_v["Goles a Favor"].mean()) if not df_nhl_v.empty else 3.0
-    gc_nhl_v = float(df_nhl_v["Goles en Contra"].mean()) if not df_nhl_v.empty else 3.1
+    # Promedios puros de local y visita
+    media_nhl_home = 3.18
+    media_nhl_away = 2.92
+    media_nhl_global = 3.05
 
-    lam_nhl_l = max((gf_nhl_l + gc_nhl_v) / 2.0, 0.5)
-    lam_nhl_v = max((gf_nhl_v + gc_nhl_l) / 2.0, 0.5)
+    gf_l_puro = float(df_nhl_l["Goles a Favor"].mean()) if not df_nhl_l.empty else media_nhl_home
+    gc_l_puro = float(df_nhl_l["Goles en Contra"].mean()) if not df_nhl_l.empty else media_nhl_away
+    gf_v_puro = float(df_nhl_v["Goles a Favor"].mean()) if not df_nhl_v.empty else media_nhl_away
+    gc_v_puro = float(df_nhl_v["Goles en Contra"].mean()) if not df_nhl_v.empty else media_nhl_home
+
+    pj_nhl_l, pj_nhl_v = len(df_nhl_l), len(df_nhl_v)
+    if usar_bayes_nhl:
+        peso_nl = min(pj_nhl_l / 6.0, 1.0)
+        peso_nv = min(pj_nhl_v / 6.0, 1.0)
+        gf_nhl_l = (peso_nl * gf_l_puro) + ((1.0 - peso_nl) * media_nhl_home)
+        gc_nhl_l = (peso_nl * gc_l_puro) + ((1.0 - peso_nl) * media_nhl_away)
+        gf_nhl_v = (peso_nv * gf_v_puro) + ((1.0 - peso_nv) * media_nhl_away)
+        gc_nhl_v = (peso_nv * gc_v_puro) + ((1.0 - peso_nv) * media_nhl_home)
+    else:
+        gf_nhl_l, gc_nhl_l, gf_nhl_v, gc_nhl_v = gf_l_puro, gc_l_puro, gf_v_puro, gc_v_puro
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Últimos partidos reales de {nh_l} como LOCAL y {nh_v} como VISITANTE", expanded=True):
+        st.success("✅ Datos extraídos en vivo desde `api-web.nhle.com` filtrando estrictamente por condición de localía (`HOME`) y gira (`AWAY`).")
+        if usar_bayes_nhl:
+            st.info(f"🛡️ **Amortiguador Bayesiano NHL Activo:** {nh_l} calibrado a `{gf_nhl_l:.2f} GF / {gc_nhl_l:.2f} GC` | {nh_v} calibrado a `{gf_nhl_v:.2f} GF / {gc_nhl_v:.2f} GC`.")
+
+        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} jugando en CASA (Local):**")
+        if not df_nhl_l.empty:
+            st.dataframe(df_nhl_l, use_container_width=True, hide_index=True)
+        else:
+            st.warning(f"Sin partidos recientes completados en casa para {nh_l}.")
+
+        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} jugando de GIRA (Visita):**")
+        if not df_nhl_v.empty:
+            st.dataframe(df_nhl_v, use_container_width=True, hide_index=True)
+        else:
+            st.warning(f"Sin partidos recientes completados de visita para {nh_v}.")
+
+    # Cálculo Poisson multiplicativo calibrado por condición Local vs Visita
+    lam_nhl_l = max((gf_nhl_l * gc_nhl_v) / media_nhl_global, 0.50)
+    lam_nhl_v = max((gf_nhl_v * gc_nhl_l) / media_nhl_global, 0.50)
     tot_nhl = lam_nhl_l + lam_nhl_v
 
     mat_n = np.zeros((13, 13))
@@ -959,18 +980,20 @@ else:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟠 2. Cuotas Betano NHL")
-    c_nh_l = st.sidebar.number_input(f"Moneyline {nh_l}", 1.01, 20.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
-    c_nh_v = st.sidebar.number_input(f"Moneyline {nh_v}", 1.01, 20.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
+    c_nh_l = st.sidebar.number_input(f"Moneyline {nh_l} (Inc. OT)", 1.01, 20.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
+    c_nh_v = st.sidebar.number_input(f"Moneyline {nh_v} (Inc. OT)", 1.01, 20.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
     linea_nhl = st.sidebar.selectbox("Línea Goles Totales NHL", [5.5, 6.0, 6.5], index=2)
     c_ov_nhl = st.sidebar.number_input(f"Cuota Over {linea_nhl}", 1.01, 15.0, 1.88, 0.05)
     c_un_nhl = st.sidebar.number_input(f"Cuota Under {linea_nhl}", 1.01, 15.0, 1.92, 0.05)
 
     p_ov_nhl = 1.0 - sum(poisson.pmf(k, tot_nhl) for k in range(int(linea_nhl) + 1))
 
-    st.markdown(f"### 🧊 {nh_l} vs. {nh_v}")
-    nk1, nk2 = st.columns(2)
-    nk1.metric("🏒 Goles Esperados", f"{lam_nhl_l:.2f} - {lam_nhl_v:.2f}", f"Total: {tot_nhl:.2f} goles")
-    nk2.metric("🏆 Prob. Moneyline (Inc. OT)", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%")
+    st.markdown(f"### 🧊 {nh_l} vs. {nh_v} <span style='font-size:16px; color:#71717a;'>(NHL • Auditoría Local vs. Visita)</span>", unsafe_allow_html=True)
+    st.caption(f"📊 Promedios Reales por Condición: **{nh_l} en Casa** ({gf_nhl_l:.2f} GF / {gc_nhl_l:.2f} GC) vs **{nh_v} de Visita** ({gf_nhl_v:.2f} GF / {gc_nhl_v:.2f} GC)")
+    nk1, nk2, nk3 = st.columns(3)
+    nk1.metric("🏒 Goles Esperados (60m)", f"{lam_nhl_l:.2f} - {lam_nhl_v:.2f}", f"Total: {tot_nhl:.2f} goles")
+    nk2.metric("🏆 Prob. Moneyline (Inc. OT)", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Empate 60': {p_emp*100:.1f}%")
+    nk3.metric("📈 Prob. Over / Under", f"{p_ov_nhl*100:.1f}% Over {linea_nhl}", f"{(1-p_ov_nhl)*100:.1f}% Under {linea_nhl}")
 
     ntab1, ntab2 = st.tabs(["🏆 1. Mercados NHL (Betano)", "🔴 2. Radar En Vivo"])
     with ntab1:
