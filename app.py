@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 11.9 | NHL Home/Away Split & Live Suite",
+    page_title="Pro Bet Analyzer 12.0 | NFL & NHL Home/Away Split Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -64,8 +64,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 11.9 <span style="color:#ff8c00;">| NHL HOME/AWAY SPLIT & LIVE SUITE</span></h1>
-<p>Auditoría NHL Separada por Localía y Visita + Amortiguador Bayesiano • Tenis Aces por Superficie • 15 Ligas Fútbol • Radar In-Play</p>
+<h1>🏆 PRO BET ANALYZER 12.0 <span style="color:#ff8c00;">| NFL, NHL & SOCCER HOME/AWAY AUDIT</span></h1>
+<p>Auditoría Estrícta Local vs. Visita en Fútbol, NFL y NHL + Amortiguador Bayesiano • Tenis Aces por Superficie • Radar In-Play</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -175,7 +175,11 @@ def obtener_catalogo_equipos_espn(sport, league):
     return mapa_ids
 
 @st.cache_data(ttl=900)
-def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, n_partidos=8):
+def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, n_partidos=5, condicion_filtro="ALL"):
+    """
+    Extrae partidos reales finalizados desde ESPN Schedule.
+    Permite filtrar estrictamente por 'HOME' (Local), 'AWAY' (Visita) o 'ALL' (Todos).
+    """
     if not team_id:
         return pd.DataFrame()
     filas = []
@@ -197,11 +201,16 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
                         else:
                             rival = c
                     if yo and rival:
+                        es_local = (yo.get("homeAway", "") == "home")
+                        if condicion_filtro == "HOME" and not es_local:
+                            continue
+                        if condicion_filtro == "AWAY" and es_local:
+                            continue
+
                         sc_yo_raw = yo.get("score", 0)
                         sc_riv_raw = rival.get("score", 0)
                         pts_yo = float(sc_yo_raw.get("value", sc_yo_raw.get("displayValue", 0))) if isinstance(sc_yo_raw, dict) else float(sc_yo_raw or 0)
                         pts_riv = float(sc_riv_raw.get("value", sc_riv_raw.get("displayValue", 0))) if isinstance(sc_riv_raw, dict) else float(sc_riv_raw or 0)
-                        es_local = (yo.get("homeAway", "") == "home")
                         filas.append({
                             "Fecha": fecha_raw,
                             "Condición": "🏠 Casa" if es_local else "✈️ Ruta",
@@ -234,10 +243,6 @@ def obtener_catalogo_equipos_nhl():
 
 @st.cache_data(ttl=900)
 def extraer_ultimos_partidos_nhl_por_condicion(abbrev, condicion="HOME", n_partidos=5):
-    """
-    Extrae exclusivamente los últimos N partidos reales como LOCAL ('HOME') o VISITANTE ('AWAY')
-    desde la API oficial de la NHL (api-web.nhle.com/v1/club-schedule-season).
-    """
     if not abbrev:
         return pd.DataFrame()
     filas = []
@@ -448,8 +453,8 @@ st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
     "⚽ Fútbol (15 Ligas + UEFA Nations League)",
     "🎾 Tenis (ATP / WTA por Superficie + Proyección Aces)",
+    "🏈 Fútbol Americano (NFL - Local vs Visita en Vivo)",
     "🏀 Basketball (NBA - API ESPN en Vivo)",
-    "🏈 Fútbol Americano (NFL - API ESPN en Vivo)",
     "⚾ Béisbol (MLB - API ESPN en Vivo)",
     "🏒 Hockey sobre Hielo (NHL - Local vs Visita en Vivo)"
 ]
@@ -831,13 +836,105 @@ elif deporte_activo.startswith("🎾"):
 
 
 # ==============================================================================
-# 3. MÓDULOS NBA (🏀), NFL (🏈) Y MLB (⚾)
+# 3. MÓDULO FÚTBOL AMERICANO (NFL - AUDITORÍA LOCAL VS VISITA + BAYESIANO)
 # ==============================================================================
-elif deporte_activo.startswith(("🏀", "🏈", "⚾")):
+elif deporte_activo.startswith("🏈"):
+    st.sidebar.markdown("### 🏈 1. Equipos NFL")
+    mapa_nfl = obtener_catalogo_equipos_espn("football", "nfl")
+    if not mapa_nfl:
+        st.error("No se pudo conectar con la API Oficial de ESPN para NFL.")
+        st.stop()
+
+    lista_nfl = sorted(list(mapa_nfl.keys()))
+    c_nf1, c_nf2 = st.sidebar.columns(2)
+    nf_l = c_nf1.selectbox("🏠 Local (Home)", lista_nfl, index=0)
+    nf_v = c_nf2.selectbox("✈️ Visita (Road)", lista_nfl, index=1 if len(lista_nfl) > 1 else 0)
+
+    # En NFL la muestra de local/visita es de 1 juego cada 2 semanas -> Amortiguador Bayesiano activado por defecto
+    usar_bayes_nfl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NFL (< 6 PJ)", value=True)
+
+    df_nfl_l = extraer_ultimos_partidos_reales_espn("football", "nfl", mapa_nfl[nf_l], nf_l, n_partidos=5, condicion_filtro="HOME")
+    df_nfl_v = extraer_ultimos_partidos_reales_espn("football", "nfl", mapa_nfl[nf_v], nf_v, n_partidos=5, condicion_filtro="AWAY")
+
+    media_nfl_home = 23.4
+    media_nfl_away = 21.6
+    media_nfl_liga = 22.5
+
+    pf_l_puro = float(df_nfl_l["Anotados"].mean()) if not df_nfl_l.empty else media_nfl_home
+    pa_l_puro = float(df_nfl_l["Recibidos"].mean()) if not df_nfl_l.empty else media_nfl_away
+    pf_v_puro = float(df_nfl_v["Anotados"].mean()) if not df_nfl_v.empty else media_nfl_away
+    pa_v_puro = float(df_nfl_v["Recibidos"].mean()) if not df_nfl_v.empty else media_nfl_home
+
+    pj_nf_l, pj_nf_v = len(df_nfl_l), len(df_nfl_v)
+    if usar_bayes_nfl:
+        peso_nfl_l = min(pj_nf_l / 6.0, 1.0)
+        peso_nfl_v = min(pj_nf_v / 6.0, 1.0)
+        pf_l = (peso_nfl_l * pf_l_puro) + ((1.0 - peso_nfl_l) * media_nfl_home)
+        pa_l = (peso_nfl_l * pa_l_puro) + ((1.0 - peso_nfl_l) * media_nfl_away)
+        pf_v = (peso_nfl_v * pf_v_puro) + ((1.0 - peso_nfl_v) * media_nfl_away)
+        pa_v = (peso_nfl_v * pa_v_puro) + ((1.0 - peso_nfl_v) * media_nfl_home)
+    else:
+        pf_l, pa_l, pf_v, pa_v = pf_l_puro, pa_l_puro, pf_v_puro, pa_v_puro
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA NFL: Últimos partidos reales de {nf_l} como LOCAL y {nf_v} como VISITANTE", expanded=True):
+        st.success("✅ Datos extraídos en vivo desde ESPN Schedule filtrando estrictamente por Localía (`HOME`) y Gira (`AWAY`).")
+        if usar_bayes_nfl:
+            st.info(f"🛡️ **Amortiguador Bayesiano NFL Activo:** {nf_l} calibrado a `{pf_l:.1f} PF / {pa_l:.1f} PA` (peso {peso_nfl_l*100:.0f}%) | {nf_v} calibrado a `{pf_v:.1f} PF / {pa_v:.1f} PA` (peso {peso_nfl_v*100:.0f}%).")
+
+        st.markdown(f"**🏠 Últimos {len(df_nfl_l)} partidos de {nf_l} jugando en CASA (Local):**")
+        if not df_nfl_l.empty:
+            st.dataframe(df_nfl_l, use_container_width=True, hide_index=True)
+        else:
+            st.warning(f"Sin partidos recientes completados en casa para {nf_l}.")
+
+        st.markdown(f"**✈️ Últimos {len(df_nfl_v)} partidos de {nf_v} jugando de GIRA (Visita):**")
+        if not df_nfl_v.empty:
+            st.dataframe(df_nfl_v, use_container_width=True, hide_index=True)
+        else:
+            st.warning(f"Sin partidos recientes completados de visita para {nf_v}.")
+
+    proy_l = (pf_l + pa_v) / 2.0
+    proy_v = (pf_v + pa_l) / 2.0
+    tot_nfl = proy_l + proy_v
+    p_ml_l = float(1.0 - norm.cdf(0.0, loc=proy_l - proy_v, scale=13.2))
+    p_ml_v = 1.0 - p_ml_l
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🟠 2. Cuotas Betano NFL")
+    c_nfl_l = st.sidebar.number_input(f"Moneyline Gana {nf_l}", 1.01, 25.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
+    c_nfl_v = st.sidebar.number_input(f"Moneyline Gana {nf_v}", 1.01, 25.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
+    linea_nfl = st.sidebar.number_input("Línea Puntos Totales NFL", 30.5, 68.5, round(tot_nfl*2)/2, 0.5)
+    c_ov_nfl = st.sidebar.number_input(f"Cuota Más de {linea_nfl} (Over)", 1.01, 15.0, 1.90, 0.05)
+    c_un_nfl = st.sidebar.number_input(f"Cuota Menos de {linea_nfl} (Under)", 1.01, 15.0, 1.90, 0.05)
+
+    p_ov_nfl = float(1.0 - norm.cdf(linea_nfl, loc=tot_nfl, scale=14.2))
+
+    st.markdown(f"### 🏈 {nf_l} vs. {nf_v} <span style='font-size:16px; color:#71717a;'>(NFL • Auditoría Local vs. Visita)</span>", unsafe_allow_html=True)
+    st.caption(f"📊 Promedios por Condición: **{nf_l} en Casa** ({pf_l:.1f} PF / {pa_l:.1f} PA) vs **{nf_v} de Visita** ({pf_v:.1f} PF / {pa_v:.1f} PA)")
+    fk1, fk2, fk3 = st.columns(3)
+    fk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total Esperado: {tot_nfl:.1f} pts")
+    fk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Spread Esp.: {proy_l - proy_v:+.1f}")
+    fk3.metric("📈 Prob. Over / Under", f"{p_ov_nfl*100:.1f}% Over {linea_nfl}", f"{(1-p_ov_nfl)*100:.1f}% Under {linea_nfl}")
+
+    ftab1, ftab2 = st.tabs(["🎯 1. Mercados NFL (Betano)", "🔴 2. Radar En Vivo (In-Play)"])
+    with ftab1:
+        m_nfl = [
+            (f"Moneyline: Gana {nf_l}", p_ml_l, c_nfl_l),
+            (f"Moneyline: Gana {nf_v}", p_ml_v, c_nfl_v),
+            (f"Total: Más de {linea_nfl} Puntos (Over)", p_ov_nfl, c_ov_nfl),
+            (f"Total: Menos de {linea_nfl} Puntos (Under)", 1.0 - p_ov_nfl, c_un_nfl)
+        ]
+        st.dataframe(pd.DataFrame([{"Mercado NFL": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_nfl]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+    with ftab2:
+        mostrar_cancha_calor(nf_l, nf_v, p_ml_l*100, p_ml_v*100, 1.1, 1.0, "nfl")
+
+
+# ==============================================================================
+# 4. MÓDULOS NBA (🏀) Y MLB (⚾)
+# ==============================================================================
+elif deporte_activo.startswith(("🏀", "⚾")):
     if deporte_activo.startswith("🏀"):
         sport_p, league_c, nom_dep, sigma_m, cancha_k = "basketball", "nba", "NBA Basketball", 11.8, "nba"
-    elif deporte_activo.startswith("🏈"):
-        sport_p, league_c, nom_dep, sigma_m, cancha_k = "football", "nfl", "NFL Fútbol Americano", 13.2, "nfl"
     else:
         sport_p, league_c, nom_dep, sigma_m, cancha_k = "baseball", "mlb", "MLB Béisbol", 3.2, "mlb"
 
@@ -851,8 +948,8 @@ elif deporte_activo.startswith(("🏀", "🏈", "⚾")):
     u_l = st.sidebar.selectbox("🏠 Local (Home)", lista_eq, index=0)
     u_v = st.sidebar.selectbox("✈️ Visita (Road)", lista_eq, index=1 if len(lista_eq) > 1 else 0)
 
-    df_real_l = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_l], u_l, 8)
-    df_real_v = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_v], u_v, 8)
+    df_real_l = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_l], u_l, n_partidos=8, condicion_filtro="ALL")
+    df_real_v = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_v], u_v, n_partidos=8, condicion_filtro="ALL")
 
     with st.expander(f"📋 TABLA DE AUDITORÍA {nom_dep}: Últimos partidos oficiales extraídos en vivo de ESPN ({u_l} vs {u_v})", expanded=True):
         st.success(f"✅ Datos de {nom_dep} extraídos 100% en tiempo real desde la API Oficial de ESPN (`site.api.espn.com`).")
@@ -863,7 +960,7 @@ elif deporte_activo.startswith(("🏀", "🏈", "⚾")):
         if not df_real_v.empty:
             st.dataframe(df_real_v, use_container_width=True, hide_index=True)
 
-    def_pts = 112.0 if sport_p == "basketball" else (22.5 if sport_p == "football" else 4.5)
+    def_pts = 112.0 if sport_p == "basketball" else 4.5
     pf_l = float(df_real_l["Anotados"].mean()) if not df_real_l.empty else def_pts
     pa_l = float(df_real_l["Recibidos"].mean()) if not df_real_l.empty else def_pts
     pf_v = float(df_real_v["Anotados"].mean()) if not df_real_v.empty else def_pts
@@ -905,7 +1002,7 @@ elif deporte_activo.startswith(("🏀", "🏈", "⚾")):
 
 
 # ==============================================================================
-# 4. MÓDULO HOCKEY SOBRE HIELO (NHL - AUDITORÍA LOCAL VS VISITA + BAYESIANO)
+# 5. MÓDULO HOCKEY SOBRE HIELO (NHL - AUDITORÍA LOCAL VS VISITA + BAYESIANO)
 # ==============================================================================
 else:
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
@@ -921,11 +1018,9 @@ else:
 
     usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
 
-    # Extraer partidos reales estrictamente filtrados por condición (Local vs. Visita)
     df_nhl_l = extraer_ultimos_partidos_nhl_por_condicion(mapa_nhl[nh_l], condicion="HOME", n_partidos=5)
     df_nhl_v = extraer_ultimos_partidos_nhl_por_condicion(mapa_nhl[nh_v], condicion="AWAY", n_partidos=5)
 
-    # Promedios puros de local y visita
     media_nhl_home = 3.18
     media_nhl_away = 2.92
     media_nhl_global = 3.05
@@ -963,7 +1058,6 @@ else:
         else:
             st.warning(f"Sin partidos recientes completados de visita para {nh_v}.")
 
-    # Cálculo Poisson multiplicativo calibrado por condición Local vs Visita
     lam_nhl_l = max((gf_nhl_l * gc_nhl_v) / media_nhl_global, 0.50)
     lam_nhl_v = max((gf_nhl_v * gc_nhl_l) / media_nhl_global, 0.50)
     tot_nhl = lam_nhl_l + lam_nhl_v
