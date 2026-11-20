@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 13.0 | Deep Intelligence, Cards & SOG",
+    page_title="Pro Bet Analyzer 13.1 | Auto-Injury & Spanish Audit",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -74,8 +74,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 13.0 <span style="color:#ff8c00;">| DEEP INTELLIGENCE, CARDS & SOG SUITE</span></h1>
-<p>Factor de Incidencia por Bajas Clave en Todos los Deportes • Tarjetas Reales (HY/AY/HR/AR) en Fútbol • Shots on Goal (SOG) Reales en NHL</p>
+<h1>🏆 PRO BET ANALYZER 13.1 <span style="color:#ff8c00;">| AUTO-INJURY & SPANISH AUDIT</span></h1>
+<p>Cálculo Automático del Factor de Incidencia por Bajas • Tablas 100% en Español • Tarjetas Reales y Shots on Goal (SOG)</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -123,7 +123,7 @@ Dominio: {dom_vis:.0f}% | {eq_vis} ✈️
     components.html(html_code, height=265)
 
 # ==============================================================================
-# MOTOR DE INTELIGENCIA DE NOTICIAS Y REPORTES DE LESIONES EN VIVO (ESPN API)
+# MOTOR DE INTELIGENCIA AUTOMÁTICA DE BAJAS, LESIONES Y NOTICIAS (ESPN API)
 # ==============================================================================
 ESPN_LEAGUE_MAP = {
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": ("soccer", "eng.1"),
@@ -143,9 +143,19 @@ ESPN_LEAGUE_MAP = {
     "🌍 UEFA Nations League (Selecciones UEFA)": ("soccer", "uefa.nations")
 }
 
+TRADUCCION_ESTADO_LESION = {
+    "Out": "🔴 Baja Confirmada (Out)",
+    "Injured Reserve": "🔴 Reserva Lesionados (IR)",
+    "Suspension": "🔴 Suspendido",
+    "Doubtful": "🟠 Muy Dudoso (Doubtful)",
+    "Questionable": "🟡 En Duda (Questionable)",
+    "Day-To-Day": "🟡 Día a Día (Day-to-Day)",
+    "Probable": "🟢 Probable"
+}
+
 @st.cache_data(ttl=900)
 def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
-    """Consulta en vivo /injuries de ESPN y filtra los lesionados/dudosos de ambos equipos."""
+    """Consulta en vivo /injuries de ESPN y calcula el peso de impacto por jugador ausente."""
     filas_inj = []
     if not sport or not league:
         return pd.DataFrame()
@@ -166,14 +176,35 @@ def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
                     ath = item.get("athlete", {})
                     jug = ath.get("displayName", "Jugador")
                     pos = ath.get("position", {}).get("abbreviation", "-")
-                    est = item.get("status", "Questionable")
+                    est_raw = item.get("status", "Questionable")
+                    est_esp = TRADUCCION_ESTADO_LESION.get(est_raw, f"🟡 {est_raw}")
                     det = item.get("shortComment", item.get("longComment", "Reporte médico activo"))
+
+                    # Calcular peso individual de incidencia (%) según estado y posición clave
+                    est_low = est_raw.lower()
+                    if any(k in est_low for k in ["out", "injured", "ir", "suspen"]):
+                        base_w = 3.0
+                    elif "doubtful" in est_low:
+                        base_w = 2.0
+                    elif any(k in est_low for k in ["questionable", "day"]):
+                        base_w = 1.0
+                    else:
+                        base_w = 0.0
+
+                    # Multiplicador por posición ofensiva crítica
+                    pos_up = str(pos).upper()
+                    if pos_up in ["QB"]:
+                        base_w *= 4.5  # Quarterback titular en NFL tiene altísima incidencia
+                    elif pos_up in ["FW", "ST", "CF", "LW", "RW", "PG", "SG", "SF", "PF", "C", "P", "SP"]:
+                        base_w *= 1.35
+
                     filas_inj.append({
                         "Equipo": etiqueta_eq,
                         "Jugador": jug,
-                        "Pos.": pos,
-                        "Estado": est,
-                        "Detalle / Parte Médico": str(det)[:110]
+                        "Posición": pos,
+                        "Estado Médico": est_esp,
+                        "Detalle / Parte Médico": str(det)[:110],
+                        "_peso_auto": base_w
                     })
     except Exception:
         pass
@@ -195,40 +226,67 @@ def obtener_noticias_relevantes_espn(sport, league, eq_a, eq_b):
             texto_busq = f"{hl} {desc}".lower()
             if any(k in texto_busq for k in claves):
                 fecha_n = art.get("published", "")[:10]
-                titulares.append(f"📰 **[{fecha_n}] {hl}** — _{desc[:140]}_")
+                titulares.append((fecha_n, hl, desc))
     except Exception:
         pass
     return titulares[:6]
 
+def calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis):
+    """Calcula automáticamente el % de penalización ofensiva (0 a 30%) en múltiplos de 5%."""
+    raw_l, raw_v = 0.0, 0.0
+    if not df_inj.empty and "_peso_auto" in df_inj.columns:
+        raw_l += float(df_inj[df_inj["Equipo"] == eq_loc]["_peso_auto"].sum())
+        raw_v += float(df_inj[df_inj["Equipo"] == eq_vis]["_peso_auto"].sum())
+
+    # Revisar también palabras clave de bajas en titulares recientes
+    palabras_alerta = ["injury", "injured", "out for", "ruled out", "sidelined", "lesion", "baja", "suspend", "miss"]
+    claves_l = [w.lower() for w in eq_loc.split() if len(w) > 3]
+    claves_v = [w.lower() for w in eq_vis.split() if len(w) > 3]
+    for _, hl, desc in noticias:
+        txt = f"{hl} {desc}".lower()
+        if any(pa in txt for pa in palabras_alerta):
+            if any(kl in txt for kl in claves_l):
+                raw_l += 2.5
+            if any(kv in txt for kv in claves_v):
+                raw_v += 2.5
+
+    # Redondear al múltiplo de 5 más cercano con tope máximo de 30%
+    pen_l = int(min(max(round(raw_l / 5.0) * 5, 0), 30))
+    pen_v = int(min(max(round(raw_v / 5.0) * 5, 0), 30))
+    return pen_l, pen_v
+
 def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
-    """Muestra el reporte médico en vivo y los controles de Factor de Incidencia por bajas."""
+    """Consulta bajas y noticias en vivo, calcula el Factor de Incidencia automáticamente y llena los sliders."""
     df_inj = obtener_reporte_lesiones_espn(sport, league, eq_loc, eq_vis)
     noticias = obtener_noticias_relevantes_espn(sport, league, eq_loc, eq_vis)
+    auto_pen_l, auto_pen_v = calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis)
 
-    with st.expander(f"🏥 INTELIGENCIA DE BAJAS, LESIONES Y NOTICIAS EN VIVO ({eq_loc} vs. {eq_vis})", expanded=False):
+    with st.expander(f"🏥 INTELIGENCIA AUTOMÁTICA DE BAJAS, LESIONES Y NOTICIAS ({eq_loc} vs. {eq_vis})", expanded=(not df_inj.empty or auto_pen_l > 0 or auto_pen_v > 0)):
         if not df_inj.empty:
-            st.warning(f"⚠️ **Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas registradas en API ESPN):**")
-            st.dataframe(df_inj, use_container_width=True, hide_index=True)
+            st.warning(f"⚠️ **Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas en API ESPN) — Factor Auto-Calculado: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)**")
+            cols_visibles = [c for c in df_inj.columns if not c.startswith("_")]
+            st.dataframe(df_inj[cols_visibles], use_container_width=True, hide_index=True)
         else:
-            st.info("ℹ️ Sin listado detallado de lesionados en el feed público de ESPN para este cruce (puedes ajustar manualmente el Factor de Incidencia en la barra lateral si conoces una baja de última hora).")
+            st.info(f"ℹ️ Sin reporte médico activo en el feed público de ESPN para {eq_loc} vs. {eq_vis} (Factor Auto-Calculado: -{auto_pen_l}% / -{auto_pen_v}%).")
 
         if noticias:
-            st.markdown("**🗞️ Últimas Noticias Relevantes Detectadas:**")
-            for n in noticias:
-                st.markdown(n)
+            st.markdown("**🗞️ Últimas Noticias Relevantes Analizadas:**")
+            for f_n, hl, desc in noticias:
+                st.markdown(f"📰 **[{f_n}] {hl}** — _{desc[:140]}_")
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🏥 Factor de Incidencia por Bajas")
+    st.sidebar.markdown("### 🏥 Factor de Incidencia (Auto-Calculado)")
+    st.sidebar.caption(f"🤖 Sugerencia automática según bajas detectadas: **{eq_loc} (-{auto_pen_l}%)** | **{eq_vis} (-{auto_pen_v}%)**")
     imp_loc = st.sidebar.slider(
         f"Penalización Ofensiva {eq_loc} (%)",
-        min_value=0, max_value=30, value=0, step=5,
-        help="Reduce la proyección ofensiva del equipo local si faltan figuras clave (ej. -10% delantero/QB estrella, -20% múltiples titulares).",
+        min_value=0, max_value=30, value=auto_pen_l, step=5,
+        help="Calculado automáticamente desde el reporte médico y noticias de ESPN. Puedes ajustarlo manualmente si lo deseas.",
         key=f"imp_l_{key_prefix}"
     )
     imp_vis = st.sidebar.slider(
         f"Penalización Ofensiva {eq_vis} (%)",
-        min_value=0, max_value=30, value=0, step=5,
-        help="Reduce la proyección ofensiva del equipo visitante si faltan figuras clave.",
+        min_value=0, max_value=30, value=auto_pen_v, step=5,
+        help="Calculado automáticamente desde el reporte médico y noticias de ESPN. Puedes ajustarlo manualmente si lo deseas.",
         key=f"imp_v_{key_prefix}"
     )
     return 1.0 - (imp_loc / 100.0), 1.0 - (imp_vis / 100.0), imp_loc, imp_vis
@@ -332,9 +390,9 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
                             "Fecha": fecha_raw,
                             "Condición": "🏠 Casa" if es_local else "✈️ Ruta",
                             "Rival": rival.get("team", {}).get("displayName", "Rival"),
-                            "Anotados": int(pts_yo),
-                            "Recibidos": int(pts_riv),
-                            "Total": int(pts_yo + pts_riv),
+                            "Puntos/Carreras a Favor": int(pts_yo),
+                            "Puntos/Carreras en Contra": int(pts_riv),
+                            "Total Marcador": int(pts_yo + pts_riv),
                             "Resultado": "✅ Victoria" if pts_yo > pts_riv else ("❌ Derrota" if pts_yo < pts_riv else "🤝 Empate")
                         })
     except Exception:
@@ -360,7 +418,6 @@ def obtener_catalogo_equipos_nhl():
 
 @st.cache_data(ttl=1200)
 def obtener_sog_boxscore_nhl(game_id):
-    """Consulta el boxscore oficial de un partido NHL para obtener los Shots on Goal (SOG) reales."""
     try:
         r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=5).json()
         h_sog = int(r.get("homeTeam", {}).get("sog", 0))
@@ -371,10 +428,6 @@ def obtener_sog_boxscore_nhl(game_id):
 
 @st.cache_data(ttl=900)
 def extraer_ultimos_partidos_nhl_con_sog(abbrev, condicion="HOME", n_partidos=5):
-    """
-    Extrae los últimos N partidos reales como LOCAL ('HOME') o VISITANTE ('AWAY')
-    desde api-web.nhle.com incluyendo Goles y Shots on Goal (SOG) reales de boxscore.
-    """
     if not abbrev:
         return pd.DataFrame()
     filas = []
@@ -416,12 +469,12 @@ def extraer_ultimos_partidos_nhl_con_sog(abbrev, condicion="HOME", n_partidos=5)
                 "Fecha": fecha,
                 "Condición": "🏠 Local" if es_local else "✈️ Visita",
                 "Rival": rival,
-                "GF": gf,
-                "GC": gc,
+                "Goles a Favor": gf,
+                "Goles en Contra": gc,
                 "Total Goles": gf + gc,
-                "SOG Favor": sog_favor if sog_favor > 0 else np.nan,
-                "SOG Contra": sog_contra if sog_contra > 0 else np.nan,
-                "Total SOG": (sog_favor + sog_contra) if (sog_favor > 0 and sog_contra > 0) else np.nan,
+                "Tiros al Arco (SOG) Favor": sog_favor if sog_favor > 0 else np.nan,
+                "Tiros al Arco (SOG) Contra": sog_contra if sog_contra > 0 else np.nan,
+                "Total Tiros (SOG)": (sog_favor + sog_contra) if (sog_favor > 0 and sog_contra > 0) else np.nan,
                 "Definición": cierre_lbl,
                 "Resultado": "✅ Victoria" if gf > gc else "❌ Derrota"
             })
@@ -596,18 +649,18 @@ def calcular_perfil_superficie_real(df_partidos, rank_actual, circuito, nombre_t
 # --- SELECTOR MAESTRO DE DEPORTE ---
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (15 Ligas + Tarjetas Reales + Bajas)",
+    "⚽ Fútbol (15 Ligas + Tarjetas Reales + Bajas Auto)",
     "🎾 Tenis (ATP / WTA Superficie, Aces + Estado Físico)",
-    "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Bajas)",
-    "🏈 Fútbol Americano (NFL - Local/Visita + Bajas)",
-    "🏀 Basketball (NBA - API ESPN + Bajas)",
-    "⚾ Béisbol (MLB - API ESPN + Bajas)"
+    "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Bajas Auto)",
+    "🏈 Fútbol Americano (NFL - Local/Visita + Bajas Auto)",
+    "🏀 Basketball (NBA - API ESPN + Bajas Auto)",
+    "⚾ Béisbol (MLB - API ESPN + Bajas Auto)"
 ]
 deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opciones_deportes, index=0)
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (15 LIGAS + TARJETAS REALES HY/AY/HR/AR + INTELIGENCIA BAJAS)
+# 1. MÓDULO FÚTBOL (TABLAS EN ESPAÑOL + TARJETAS REALES + BAJAS AUTOMÁTICAS)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -659,7 +712,6 @@ if deporte_activo.startswith("⚽"):
 
     usar_amortiguador = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano (< 6 PJ)", value=False)
 
-    # Panel de Inteligencia de Bajas y Factor de Incidencia
     espn_sp, espn_lg = ESPN_LEAGUE_MAP.get(liga_sel, ("soccer", "eng.1"))
     mult_bajas_l, mult_bajas_v, pct_baja_l, pct_baja_v = renderizar_panel_bajas_y_factor(espn_sp, espn_lg, eq_l, eq_v, f"fut_{eq_l}_{eq_v}")
 
@@ -688,7 +740,6 @@ if deporte_activo.startswith("⚽"):
     else:
         gf_l, gc_l, gf_v, gc_v = gf_l_puro, gc_l_puro, gf_v_puro, gc_v_puro
 
-    # Aplicar Factor de Incidencia por Ausencia de Jugadores Clave
     gf_l = gf_l * mult_bajas_l
     gf_v = gf_v * mult_bajas_v
 
@@ -702,13 +753,11 @@ if deporte_activo.startswith("⚽"):
     cor_l = float(p_l['HC'].mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
     cor_v = float(p_v['AC'].mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
 
-    # Cálculo real de Tarjetas (Amarillas HY/AY + Rojas HR/AR)
     if tiene_tarjetas_csv:
         hy_l = float(p_l['HY'].fillna(0).mean())
         hr_l = float(p_l['HR'].fillna(0).mean()) if 'HR' in p_l.columns else 0.0
         ay_v = float(p_v['AY'].fillna(0).mean())
         ar_v = float(p_v['AR'].fillna(0).mean()) if 'AR' in p_v.columns else 0.0
-        # Tarjetas totales esperadas (Amarillas + Rojas) y Puntos por Tarjeta (Amarilla=1, Roja=2)
         tarj_tot_esp = round(hy_l + hr_l + ay_v + ar_v, 2)
         pts_tarj_esp = round(hy_l + (2.0 * hr_l) + ay_v + (2.0 * ar_v), 2)
     else:
@@ -716,20 +765,45 @@ if deporte_activo.startswith("⚽"):
         tarj_tot_esp = 4.40
         pts_tarj_esp = 4.60
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA: Partidos reales, Remates, Córners y Tarjetas ({eq_l} vs {eq_v})", expanded=True):
+    # Diccionario de traducción al español para la Tabla de Auditoría de Fútbol
+    TRADUCCION_COLS_FUTBOL = {
+        "Date": "Fecha",
+        "Tournament": "Torneo",
+        "HomeTeam": "Equipo Local",
+        "AwayTeam": "Equipo Visita",
+        "FTHG": "Goles Local (A Favor)",
+        "FTAG": "Goles Visita (En Contra)",
+        "HS": "Tiros Totales Local",
+        "HST": "Tiros al Arco Local",
+        "HC": "Córners Local",
+        "HY": "Amarillas Local",
+        "HR": "Rojas Local",
+        "AS": "Tiros Totales Visita",
+        "AST": "Tiros al Arco Visita",
+        "AC": "Córners Visita",
+        "AY": "Amarillas Visita",
+        "AR": "Rojas Visita"
+    }
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA: Partidos reales, Tiros, Córners y Tarjetas ({eq_l} vs {eq_v})", expanded=True):
         if tiene_tiros_csv and tiene_tarjetas_csv:
-            st.success("✅ Telemetría Completa Opta / Football-Data: Goles (FTHG/FTAG), Remates (HS/AS), Puerta (HST/AST), Córners (HC/AC) y Tarjetas (HY/AY, HR/AR) 100% reales.")
+            st.success("✅ Telemetría Completa Opta / Football-Data: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
         else:
-            st.warning("⚠️ Liga de América / Selecciones: El CSV público contiene Goles Reales (FTHG/FTAG), pero no incluye conteos de Tiros ni Tarjetas.")
+            st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
         if pct_baja_l > 0 or pct_baja_v > 0:
             st.markdown(f"<div class='injury-alert'>🏥 <b>Factor de Incidencia Aplicado:</b> {eq_l} (-{pct_baja_l}% potencia ofensiva) | {eq_v} (-{pct_baja_v}% potencia ofensiva).</div>", unsafe_allow_html=True)
 
         cols_l = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
         st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL:**")
-        st.dataframe(p_l[cols_l], use_container_width=True, hide_index=True)
+        st.dataframe(p_l[cols_l].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
+
+        # Para visita, etiquetar claramente goles recibidos vs anotados
+        trad_vis = dict(TRADUCCION_COLS_FUTBOL)
+        trad_vis["FTHG"] = "Goles Local (En Contra)"
+        trad_vis["FTAG"] = "Goles Visita (A Favor)"
         cols_v = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
         st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE:**")
-        st.dataframe(p_v[cols_v], use_container_width=True, hide_index=True)
+        st.dataframe(p_v[cols_v].rename(columns=trad_vis), use_container_width=True, hide_index=True)
 
     lam_loc = max((gf_l * gc_v) / media_liga, 0.15)
     lam_vis = max((gf_v * gc_l) / media_liga, 0.12)
@@ -761,11 +835,11 @@ if deporte_activo.startswith("⚽"):
     cuota_btts_si = cb6.number_input("BTTS SÍ", 1.01, 20.0, 1.80, 0.05)
     cuota_btts_no = cb7.number_input("BTTS NO", 1.01, 20.0, 1.95, 0.05)
 
-    with st.sidebar.expander("📏 Cuotas Remates, Córners y Tarjetas"):
-        linea_remates = st.number_input("Línea Remates Totales", 10.5, 40.5, 24.5, 1.0)
-        cuota_over_rem = st.number_input("Cuota Over Remates", 1.01, 15.0, 1.85, 0.05)
-        linea_puerta = st.number_input("Línea Remates a Puerta", 3.5, 20.5, 8.5, 1.0)
-        cuota_over_pue = st.number_input("Cuota Over a Puerta", 1.01, 15.0, 1.85, 0.05)
+    with st.sidebar.expander("📏 Cuotas Tiros, Córners y Tarjetas"):
+        linea_remates = st.number_input("Línea Tiros Totales", 10.5, 40.5, 24.5, 1.0)
+        cuota_over_rem = st.number_input("Cuota Over Tiros", 1.01, 15.0, 1.85, 0.05)
+        linea_puerta = st.number_input("Línea Tiros al Arco", 3.5, 20.5, 8.5, 1.0)
+        cuota_over_pue = st.number_input("Cuota Over al Arco", 1.01, 15.0, 1.85, 0.05)
         linea_corners = st.number_input("Línea Córners Totales", 4.5, 20.5, 8.5, 1.0)
         cuota_over_cor = st.number_input("Cuota Over Córners", 1.01, 15.0, 1.85, 0.05)
         st.markdown("---")
@@ -780,20 +854,19 @@ if deporte_activo.startswith("⚽"):
     lam_cor = cor_l + cor_v
     p_ov_cor = float(1.0 - norm.cdf(linea_corners, loc=lam_cor, scale=3.35))
 
-    # Probabilidad Poisson para Tarjetas Totales (disciplina real HY+HR+AY+AR)
     p_ov_tarj = float(1.0 - sum(poisson.pmf(k, max(tarj_tot_esp, 0.5)) for k in range(int(linea_tarjetas) + 1)))
     p_un_tarj = 1.0 - p_ov_tarj
 
     st.markdown(f"### 🏟️ {eq_l} vs. {eq_v} <span style='font-size:16px; color:#71717a;'>({liga_sel})</span>", unsafe_allow_html=True)
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("⚽ Goles Esp. (xG)", f"{lam_loc:.2f} - {lam_vis:.2f}", f"Total: {lam_loc+lam_vis:.2f}")
-    k2.metric("🎯 Remates Esp.", f"{lam_rem:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
-    k3.metric("🥅 A Puerta Esp.", f"{lam_pue:.1f} arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
+    k2.metric("🎯 Tiros Totales Esp.", f"{lam_rem:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
+    k3.metric("🥅 Tiros al Arco Esp.", f"{lam_pue:.1f} arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
     k4.metric("⛳ Córners Esp.", f"{lam_cor:.1f} esq.", f"{cor_l:.1f} L + {cor_v:.1f} V")
     k5.metric("🟨 Tarjetas Esp.", f"{tarj_tot_esp:.1f} tarj.", f"{hy_l+hr_l:.1f} L + {ay_v+ar_v:.1f} V" if tiene_tarjetas_csv else "Sin CSV Tarj.")
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🎯 1. Goles y 1X2", "⛳ 2. Remates y Córners", "🟨 3. Tarjetas (Amarillas/Rojas)",
+        "🎯 1. Goles y 1X2", "⛳ 2. Tiros y Córners", "🟨 3. Tarjetas (Amarillas/Rojas)",
         "🔢 4. Matriz Exacta", "🔴 5. Radar En Vivo"
     ])
     with tab1:
@@ -811,10 +884,10 @@ if deporte_activo.startswith("⚽"):
 
     with tab2:
         m_e = [
-            (f"Más de {linea_remates} Remates Totales (Over)", p_ov_rem, cuota_over_rem),
-            (f"Menos de {linea_remates} Remates Totales (Under)", 1.0 - p_ov_rem, 1.85),
-            (f"Más de {linea_puerta} Remates a Puerta (Over)", p_ov_pue, cuota_over_pue),
-            (f"Menos de {linea_puerta} Remates a Puerta (Under)", 1.0 - p_ov_pue, 1.85),
+            (f"Más de {linea_remates} Tiros Totales (Over)", p_ov_rem, cuota_over_rem),
+            (f"Menos de {linea_remates} Tiros Totales (Under)", 1.0 - p_ov_rem, 1.85),
+            (f"Más de {linea_puerta} Tiros al Arco (Over)", p_ov_pue, cuota_over_pue),
+            (f"Menos de {linea_puerta} Tiros al Arco (Under)", 1.0 - p_ov_pue, 1.85),
             (f"Más de {linea_corners} Córners Totales (Over)", p_ov_cor, cuota_over_cor),
             (f"Menos de {linea_corners} Córners Totales (Under)", 1.0 - p_ov_cor, 1.85)
         ]
@@ -823,7 +896,7 @@ if deporte_activo.startswith("⚽"):
 
     with tab3:
         if not tiene_tarjetas_csv:
-            st.warning("⚠️ Esta liga no incluye columnas oficiales de tarjetas (`HY`/`AY`) en el archivo CSV. No se recomienda operar mercados de tarjetas aquí.")
+            st.warning("⚠️ Esta liga no incluye columnas oficiales de tarjetas en el archivo CSV. No se recomienda operar mercados de tarjetas aquí.")
         else:
             st.info(f"📊 **Desglose Disciplinario Real (Últimos 5 PJ):** **{eq_l}** promedia `{hy_l:.1f}` amarillas y `{hr_l:.2f}` rojas en casa | **{eq_v}** promedia `{ay_v:.1f}` amarillas y `{ar_v:.2f}` rojas de visita (Puntos Tarjeta Esp.: `{pts_tarj_esp:.1f}`).")
             m_tarj = [
@@ -851,7 +924,7 @@ if deporte_activo.startswith("⚽"):
 
 
 # ==============================================================================
-# 2. MÓDULO TENIS (SUPERFICIE, ACES + ESTADO FÍSICO Y NOTICIAS ESPN)
+# 2. MÓDULO TENIS (SUPERFICIE, ACES + DETECCIÓN AUTOMÁTICA DE FATIGA/NOTICIAS)
 # ==============================================================================
 elif deporte_activo.startswith("🎾"):
     st.sidebar.markdown("### 🎾 1. Circuito, Superficie y Tenistas")
@@ -882,19 +955,20 @@ elif deporte_activo.startswith("🎾"):
     jug_a = col_t1.selectbox("🎾 Tenista A", lista_tenistas, index=idx_a)
     jug_b = col_t2.selectbox("🎾 Tenista B", lista_tenistas, index=idx_b)
 
-    # Calibración de Estado Físico / Fatiga / Molestias en Tenis
+    pref_t = "atp" if "ATP" in circuito else "wta"
+    noticias_t = obtener_noticias_relevantes_espn("tennis", pref_t, jug_a, jug_b)
+    auto_fat_a, auto_fat_b = calcular_penalizacion_automatica(pd.DataFrame(), noticias_t, jug_a, jug_b)
+
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🏥 Estado Físico / Fatiga Reciente")
-    fat_a = st.sidebar.slider(f"Penalización Físico/Fatiga {jug_a} (%)", 0, 25, 0, 5)
-    fat_b = st.sidebar.slider(f"Penalización Físico/Fatiga {jug_b} (%)", 0, 25, 0, 5)
+    st.sidebar.markdown("### 🏥 Factor Físico / Fatiga (Auto-Calculado)")
+    st.sidebar.caption(f"🤖 Sugerencia automática: **{jug_a} (-{auto_fat_a}%)** | **{jug_b} (-{auto_fat_b}%)**")
+    fat_a = st.sidebar.slider(f"Penalización Físico/Fatiga {jug_a} (%)", 0, 25, min(auto_fat_a, 25), 5)
+    fat_b = st.sidebar.slider(f"Penalización Físico/Fatiga {jug_b} (%)", 0, 25, min(auto_fat_b, 25), 5)
 
     info_a = catalogo_espn_tenis[jug_a]
     info_b = catalogo_espn_tenis[jug_b]
     rank_a, pts_rank_a = info_a["rank"], info_a["points"]
     rank_b, pts_rank_b = info_b["rank"], info_b["points"]
-
-    pref_t = "atp" if "ATP" in circuito else "wta"
-    noticias_t = obtener_noticias_relevantes_espn("tennis", pref_t, jug_a, jug_b)
 
     with st.spinner(f"Extrayendo historial oficial en vivo de ESPN para {jug_a} y {jug_b}..."):
         df_part_a = obtener_partidos_reales_espn_tenista(circuito, info_a["id"], jug_a)
@@ -951,32 +1025,32 @@ elif deporte_activo.startswith("🎾"):
     st.markdown(f"""
     <div class="fav-banner">
         👑 <b>FAVORITO(A) EN {nombre_sup_corto.upper()}: {favorito_nom} (Rank Oficial #{fav_rk} | {fav_prob:.1f}% Prob. Real | Cuota Justa: {fav_cuota_justa:.2f})</b><br>
-        📌 En <b>{nombre_sup_corto}</b> presenta un <b>{fav_sup_d['WinPct']}% de efectividad</b> con <b>{fav_sup_d['Hold']}% Hold de Saque</b> • Proyección de Aces en {nombre_sup_corto}: <b>{aces_totales_esp} Aces totales ({aces_esp_a} {jug_a} + {aces_esp_b} {jug_b})</b>
+        📌 En <b>{nombre_sup_corto}</b> presenta un <b>{fav_sup_d['WinPct']}% de efectividad</b> con <b>{fav_sup_d['Hold']}% Juegos Ganados al Saque</b> • Proyección de Aces: <b>{aces_totales_esp} Aces totales ({aces_esp_a} {jug_a} + {aces_esp_b} {jug_b})</b>
     </div>
     """, unsafe_allow_html=True)
 
     with st.expander(f"📋 TABLA DE AUDITORÍA TENIS: Superficies, Aces, Noticias y Últimos Partidos ({jug_a} vs {jug_b})", expanded=True):
         if noticias_t:
             st.markdown("**🗞️ Noticias Recientes en ESPN Tenis:**")
-            for nt in noticias_t:
-                st.markdown(nt)
+            for f_nt, hl_t, desc_t in noticias_t:
+                st.markdown(f"📰 **[{f_nt}] {hl_t}** — _{desc_t[:140]}_")
         st.markdown("**🌍 1. Rendimiento y Aces Comparados por Tipo de Cancha (Dura vs. Arcilla vs. Césped):**")
         df_comparativa_canchas = pd.DataFrame([
             {
                 "Tenista": jug_a,
-                "Rank ESPN": f"#{rank_a} ({int(pts_rank_a)} pts)",
-                "🟦 Dura (Hold / Break | %Vict)": f"{sup_a['Hard']['Hold']}% / {sup_a['Hard']['Break']}% ({sup_a['Hard']['WinPct']}%)",
-                "🟧 Arcilla (Hold / Break | %Vict)": f"{sup_a['Clay']['Hold']}% / {sup_a['Clay']['Break']}% ({sup_a['Clay']['WinPct']}%)",
-                "🟩 Césped (Hold / Break | %Vict)": f"{sup_a['Grass']['Hold']}% / {sup_a['Grass']['Break']}% ({sup_a['Grass']['WinPct']}%)",
+                "Ranking ESPN": f"#{rank_a} ({int(pts_rank_a)} pts)",
+                "🟦 Dura (Saque / Quiebre | %Vict)": f"{sup_a['Hard']['Hold']}% / {sup_a['Hard']['Break']}% ({sup_a['Hard']['WinPct']}%)",
+                "🟧 Arcilla (Saque / Quiebre | %Vict)": f"{sup_a['Clay']['Hold']}% / {sup_a['Clay']['Break']}% ({sup_a['Clay']['WinPct']}%)",
+                "🟩 Césped (Saque / Quiebre | %Vict)": f"{sup_a['Grass']['Hold']}% / {sup_a['Grass']['Break']}% ({sup_a['Grass']['WinPct']}%)",
                 "🔥 Aces Base (Dura / Arcilla / Césped)": f"{sup_a['Hard']['Aces']} / {sup_a['Clay']['Aces']} / {sup_a['Grass']['Aces']}",
                 f"🎯 Aces Hoy ({nombre_sup_corto})": f"{aces_esp_a} aces"
             },
             {
                 "Tenista": jug_b,
-                "Rank ESPN": f"#{rank_b} ({int(pts_rank_b)} pts)",
-                "🟦 Dura (Hold / Break | %Vict)": f"{sup_b['Hard']['Hold']}% / {sup_b['Hard']['Break']}% ({sup_b['Hard']['WinPct']}%)",
-                "🟧 Arcilla (Hold / Break | %Vict)": f"{sup_b['Clay']['Hold']}% / {sup_b['Clay']['Break']}% ({sup_b['Clay']['WinPct']}%)",
-                "🟩 Césped (Hold / Break | %Vict)": f"{sup_b['Grass']['Hold']}% / {sup_b['Grass']['Break']}% ({sup_b['Grass']['WinPct']}%)",
+                "Ranking ESPN": f"#{rank_b} ({int(pts_rank_b)} pts)",
+                "🟦 Dura (Saque / Quiebre | %Vict)": f"{sup_b['Hard']['Hold']}% / {sup_b['Hard']['Break']}% ({sup_b['Hard']['WinPct']}%)",
+                "🟧 Arcilla (Saque / Quiebre | %Vict)": f"{sup_b['Clay']['Hold']}% / {sup_b['Clay']['Break']}% ({sup_b['Clay']['WinPct']}%)",
+                "🟩 Césped (Saque / Quiebre | %Vict)": f"{sup_b['Grass']['Hold']}% / {sup_b['Grass']['Break']}% ({sup_b['Grass']['WinPct']}%)",
                 "🔥 Aces Base (Dura / Arcilla / Césped)": f"{sup_b['Hard']['Aces']} / {sup_b['Clay']['Aces']} / {sup_b['Grass']['Aces']}",
                 f"🎯 Aces Hoy ({nombre_sup_corto})": f"{aces_esp_b} aces"
             }
@@ -1016,7 +1090,7 @@ elif deporte_activo.startswith("🎾"):
     st.markdown(f"### 🎾 {jug_a} (#{rank_a}) vs. {jug_b} (#{rank_b}) <span style='font-size:16px; color:#71717a;'>({circuito} • {nombre_sup_corto})</span>", unsafe_allow_html=True)
     tk1, tk2, tk3, tk4 = st.columns(4)
     tk1.metric("🏆 Prob. Victoria", f"{p_gana_a*100:.1f}% vs {p_gana_b*100:.1f}%", f"Favorito(a): {favorito_nom}")
-    tk2.metric(f"🎾 Hold Efectivo ({nombre_sup_corto})", f"{hold_eff_a:.1f}% vs {hold_eff_b:.1f}%", f"1er Set {jug_a}: {p_set_a*100:.1f}%")
+    tk2.metric(f"🎾 Saque Efectivo ({nombre_sup_corto})", f"{hold_eff_a:.1f}% vs {hold_eff_b:.1f}%", f"1er Set {jug_a}: {p_set_a*100:.1f}%")
     tk3.metric("📏 Total Juegos Esperados", f"{juegos_totales_esp} juegos", f"Sets Esp.: {sets_esp:.2f}")
     tk4.metric(f"🔥 Aces Esperados ({nombre_sup_corto})", f"{aces_totales_esp} aces", f"{aces_esp_a} L + {aces_esp_b} V")
 
@@ -1037,7 +1111,7 @@ elif deporte_activo.startswith("🎾"):
 
 
 # ==============================================================================
-# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - LOCAL/VISITA + SHOTS ON GOAL + BAJAS)
+# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - ESPAÑOL + SOG + BAJAS AUTOMÁTICAS)
 # ==============================================================================
 elif deporte_activo.startswith("🏒"):
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
@@ -1054,16 +1128,16 @@ elif deporte_activo.startswith("🏒"):
     usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
     mult_bajas_nl, mult_bajas_nv, pct_baja_nl, pct_baja_nv = renderizar_panel_bajas_y_factor("hockey", "nhl", nh_l, nh_v, f"nhl_{nh_l}_{nh_v}")
 
-    with st.spinner(f"Extrayendo boxscores reales de goles y Shots on Goal (SOG) de {nh_l} y {nh_v}..."):
+    with st.spinner(f"Extrayendo boxscores reales de goles y Tiros al Arco (SOG) de {nh_l} y {nh_v}..."):
         df_nhl_l = extraer_ultimos_partidos_nhl_con_sog(mapa_nhl[nh_l], condicion="HOME", n_partidos=5)
         df_nhl_v = extraer_ultimos_partidos_nhl_con_sog(mapa_nhl[nh_v], condicion="AWAY", n_partidos=5)
 
     media_nhl_home, media_nhl_away, media_nhl_global = 3.18, 2.92, 3.05
 
-    gf_l_puro = float(df_nhl_l["GF"].mean()) if not df_nhl_l.empty else media_nhl_home
-    gc_l_puro = float(df_nhl_l["GC"].mean()) if not df_nhl_l.empty else media_nhl_away
-    gf_v_puro = float(df_nhl_v["GF"].mean()) if not df_nhl_v.empty else media_nhl_away
-    gc_v_puro = float(df_nhl_v["GC"].mean()) if not df_nhl_v.empty else media_nhl_home
+    gf_l_puro = float(df_nhl_l["Goles a Favor"].mean()) if not df_nhl_l.empty else media_nhl_home
+    gc_l_puro = float(df_nhl_l["Goles en Contra"].mean()) if not df_nhl_l.empty else media_nhl_away
+    gf_v_puro = float(df_nhl_v["Goles a Favor"].mean()) if not df_nhl_v.empty else media_nhl_away
+    gc_v_puro = float(df_nhl_v["Goles en Contra"].mean()) if not df_nhl_v.empty else media_nhl_home
 
     pj_nhl_l, pj_nhl_v = len(df_nhl_l), len(df_nhl_v)
     if usar_bayes_nhl:
@@ -1076,31 +1150,28 @@ elif deporte_activo.startswith("🏒"):
     else:
         gf_nhl_l, gc_nhl_l, gf_nhl_v, gc_nhl_v = gf_l_puro, gc_l_puro, gf_v_puro, gc_v_puro
 
-    # Aplicar Factor de Incidencia por Ausencia de Jugadores Clave
     gf_nhl_l = gf_nhl_l * mult_bajas_nl
     gf_nhl_v = gf_nhl_v * mult_bajas_nv
 
-    # Extraer promedios reales de Shots on Goal (SOG) desde los boxscores
-    sog_f_l = float(df_nhl_l["SOG Favor"].dropna().mean()) if ("SOG Favor" in df_nhl_l and not df_nhl_l["SOG Favor"].dropna().empty) else 29.5
-    sog_c_l = float(df_nhl_l["SOG Contra"].dropna().mean()) if ("SOG Contra" in df_nhl_l and not df_nhl_l["SOG Contra"].dropna().empty) else 28.5
-    sog_f_v = float(df_nhl_v["SOG Favor"].dropna().mean()) if ("SOG Favor" in df_nhl_v and not df_nhl_v["SOG Favor"].dropna().empty) else 28.0
-    sog_c_v = float(df_nhl_v["SOG Contra"].dropna().mean()) if ("SOG Contra" in df_nhl_v and not df_nhl_v["SOG Contra"].dropna().empty) else 30.0
+    sog_f_l = float(df_nhl_l["Tiros al Arco (SOG) Favor"].dropna().mean()) if ("Tiros al Arco (SOG) Favor" in df_nhl_l and not df_nhl_l["Tiros al Arco (SOG) Favor"].dropna().empty) else 29.5
+    sog_c_l = float(df_nhl_l["Tiros al Arco (SOG) Contra"].dropna().mean()) if ("Tiros al Arco (SOG) Contra" in df_nhl_l and not df_nhl_l["Tiros al Arco (SOG) Contra"].dropna().empty) else 28.5
+    sog_f_v = float(df_nhl_v["Tiros al Arco (SOG) Favor"].dropna().mean()) if ("Tiros al Arco (SOG) Favor" in df_nhl_v and not df_nhl_v["Tiros al Arco (SOG) Favor"].dropna().empty) else 28.0
+    sog_c_v = float(df_nhl_v["Tiros al Arco (SOG) Contra"].dropna().mean()) if ("Tiros al Arco (SOG) Contra" in df_nhl_v and not df_nhl_v["Tiros al Arco (SOG) Contra"].dropna().empty) else 30.0
 
-    # Proyección cruzada de Shots on Goal (SOG) calibrada por ritmo y bajas
     sog_esp_loc = round(((sog_f_l + sog_c_v) / 2.0) * (0.6 + 0.4 * mult_bajas_nl), 1)
     sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles y Shots on Goal (SOG) Reales ({nh_l} Local vs {nh_v} Visita)", expanded=True):
-        st.success("✅ Datos extraídos en vivo desde los Boxscores Oficiales de `api-web.nhle.com` filtrados por Localía (`HOME`) y Gira (`AWAY`).")
+    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles y Tiros al Arco (SOG) Reales ({nh_l} Local vs {nh_v} Visita)", expanded=True):
+        st.success("✅ Datos extraídos en vivo desde los Boxscores Oficiales de la NHL filtrados por Localía (`HOME`) y Gira (`AWAY`).")
         if pct_baja_nl > 0 or pct_baja_nv > 0:
             st.markdown(f"<div class='injury-alert'>🏥 <b>Factor de Incidencia NHL Aplicado:</b> {nh_l} (-{pct_baja_nl}%) | {nh_v} (-{pct_baja_nv}%).</div>", unsafe_allow_html=True)
 
-        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. SOG: {sog_f_l:.1f} a favor / {sog_c_l:.1f} en contra):**")
+        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. Tiros al Arco: {sog_f_l:.1f} a favor / {sog_c_l:.1f} en contra):**")
         if not df_nhl_l.empty:
             st.dataframe(df_nhl_l, use_container_width=True, hide_index=True)
 
-        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. SOG: {sog_f_v:.1f} a favor / {sog_c_v:.1f} en contra):**")
+        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. Tiros al Arco: {sog_f_v:.1f} a favor / {sog_c_v:.1f} en contra):**")
         if not df_nhl_v.empty:
             st.dataframe(df_nhl_v, use_container_width=True, hide_index=True)
 
@@ -1125,29 +1196,29 @@ elif deporte_activo.startswith("🏒"):
     c_ov_nhl = st.sidebar.number_input(f"Cuota Over {linea_nhl} Goles", 1.01, 15.0, 1.88, 0.05)
     c_un_nhl = st.sidebar.number_input(f"Cuota Under {linea_nhl} Goles", 1.01, 15.0, 1.92, 0.05)
 
-    with st.sidebar.expander("🎯 Líneas y Cuotas Shots on Goal (SOG)", expanded=True):
-        linea_sog_tot = st.number_input("Línea SOG Totales Partido", 40.5, 80.5, float(int(sog_totales_esp) + 0.5), 1.0)
-        c_ov_sog = st.number_input(f"Cuota Over {linea_sog_tot} SOG", 1.01, 15.0, 1.87, 0.05)
-        c_un_sog = st.number_input(f"Cuota Under {linea_sog_tot} SOG", 1.01, 15.0, 1.87, 0.05)
-        linea_sog_loc = st.number_input(f"Línea SOG {nh_l} (Local)", 18.5, 45.5, float(int(sog_esp_loc) + 0.5), 1.0)
-        c_ov_sog_l = st.number_input(f"Cuota Over {linea_sog_loc} SOG {nh_l}", 1.01, 15.0, 1.85, 0.05)
+    with st.sidebar.expander("🎯 Líneas y Cuotas Tiros al Arco (SOG)", expanded=True):
+        linea_sog_tot = st.number_input("Línea Tiros al Arco Totales", 40.5, 80.5, float(int(sog_totales_esp) + 0.5), 1.0)
+        c_ov_sog = st.number_input(f"Cuota Over {linea_sog_tot} Tiros", 1.01, 15.0, 1.87, 0.05)
+        c_un_sog = st.number_input(f"Cuota Under {linea_sog_tot} Tiros", 1.01, 15.0, 1.87, 0.05)
+        linea_sog_loc = st.number_input(f"Línea Tiros {nh_l} (Local)", 18.5, 45.5, float(int(sog_esp_loc) + 0.5), 1.0)
+        c_ov_sog_l = st.number_input(f"Cuota Over {linea_sog_loc} Tiros {nh_l}", 1.01, 15.0, 1.85, 0.05)
 
     p_ov_nhl = 1.0 - sum(poisson.pmf(k, tot_nhl) for k in range(int(linea_nhl) + 1))
     p_ov_sog_tot = float(1.0 - norm.cdf(linea_sog_tot, loc=sog_totales_esp, scale=6.8))
     p_ov_sog_l = float(1.0 - norm.cdf(linea_sog_loc, loc=sog_esp_loc, scale=4.8))
 
-    st.markdown(f"### 🧊 {nh_l} vs. {nh_v} <span style='font-size:16px; color:#71717a;'>(NHL • Goles & Shots on Goal)</span>", unsafe_allow_html=True)
+    st.markdown(f"### 🧊 {nh_l} vs. {nh_v} <span style='font-size:16px; color:#71717a;'>(NHL • Goles & Tiros al Arco)</span>", unsafe_allow_html=True)
     nk1, nk2, nk3, nk4 = st.columns(4)
     nk1.metric("🏒 Goles Esp. (60m)", f"{lam_nhl_l:.2f} - {lam_nhl_v:.2f}", f"Total: {tot_nhl:.2f} goles")
     nk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Empate 60': {p_emp*100:.1f}%")
-    nk3.metric("🎯 Shots on Goal Esp.", f"{sog_totales_esp} SOG", f"{sog_esp_loc} L + {sog_esp_vis} V")
+    nk3.metric("🎯 Tiros al Arco Esp.", f"{sog_totales_esp} tiros", f"{sog_esp_loc} L + {sog_esp_vis} V")
     nk4.metric("📈 Prob. Over Goles", f"{p_ov_nhl*100:.1f}% Over {linea_nhl}", f"{(1-p_ov_nhl)*100:.1f}% Under {linea_nhl}")
 
-    ntab1, ntab2, ntab3 = st.tabs(["🏆 1. Mercados Goles & ML", "🎯 2. Shots on Goal (SOG)", "🔴 3. Radar En Vivo"])
+    ntab1, ntab2, ntab3 = st.tabs(["🏆 1. Mercados Goles & ML", "🎯 2. Tiros al Arco (SOG)", "🔴 3. Radar En Vivo"])
     with ntab1:
         m_nhl = [
-            (f"Moneyline: Gana {nh_l} (Inc. OT)", p_ml_l, c_nh_l),
-            (f"Moneyline: Gana {nh_v} (Inc. OT)", p_ml_v, c_nh_v),
+            (f"Moneyline: Gana {nh_l} (Inc. Prórroga)", p_ml_l, c_nh_l),
+            (f"Moneyline: Gana {nh_v} (Inc. Prórroga)", p_ml_v, c_nh_v),
             (f"Total: Más de {linea_nhl} Goles (Over)", p_ov_nhl, c_ov_nhl),
             (f"Total: Menos de {linea_nhl} Goles (Under)", 1.0 - p_ov_nhl, c_un_nhl)
         ]
@@ -1155,19 +1226,19 @@ elif deporte_activo.startswith("🏒"):
 
     with ntab2:
         m_sog = [
-            (f"🎯 Más de {linea_sog_tot} Shots on Goal Totales (Over)", p_ov_sog_tot, c_ov_sog),
-            (f"🎯 Menos de {linea_sog_tot} Shots on Goal Totales (Under)", 1.0 - p_ov_sog_tot, c_un_sog),
-            (f"🎯 {nh_l}: Más de {linea_sog_loc} Shots on Goal (Over)", p_ov_sog_l, c_ov_sog_l),
-            (f"🎯 {nh_l}: Menos de {linea_sog_loc} Shots on Goal (Under)", 1.0 - p_ov_sog_l, 1.85)
+            (f"🎯 Más de {linea_sog_tot} Tiros al Arco Totales (Over)", p_ov_sog_tot, c_ov_sog),
+            (f"🎯 Menos de {linea_sog_tot} Tiros al Arco Totales (Under)", 1.0 - p_ov_sog_tot, c_un_sog),
+            (f"🎯 {nh_l}: Más de {linea_sog_loc} Tiros al Arco (Over)", p_ov_sog_l, c_ov_sog_l),
+            (f"🎯 {nh_l}: Menos de {linea_sog_loc} Tiros al Arco (Under)", 1.0 - p_ov_sog_l, 1.85)
         ]
-        st.dataframe(pd.DataFrame([{"Mercado Shots on Goal": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_sog]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([{"Mercado Tiros al Arco (SOG)": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_sog]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
 
     with ntab3:
         mostrar_cancha_calor(nh_l, nh_v, p_ml_l*100, p_ml_v*100, 1.1, 1.0, "nhl")
 
 
 # ==============================================================================
-# 4. MÓDULO FÚTBOL AMERICANO (NFL - LOCAL/VISITA + BAYESIANO + BAJAS)
+# 4. MÓDULO FÚTBOL AMERICANO (NFL - LOCAL/VISITA + BAYESIANO + BAJAS AUTO)
 # ==============================================================================
 elif deporte_activo.startswith("🏈"):
     st.sidebar.markdown("### 🏈 1. Equipos NFL")
@@ -1189,10 +1260,10 @@ elif deporte_activo.startswith("🏈"):
 
     media_nfl_home, media_nfl_away = 23.4, 21.6
 
-    pf_l_puro = float(df_nfl_l["Anotados"].mean()) if not df_nfl_l.empty else media_nfl_home
-    pa_l_puro = float(df_nfl_l["Recibidos"].mean()) if not df_nfl_l.empty else media_nfl_away
-    pf_v_puro = float(df_nfl_v["Anotados"].mean()) if not df_nfl_v.empty else media_nfl_away
-    pa_v_puro = float(df_nfl_v["Recibidos"].mean()) if not df_nfl_v.empty else media_nfl_home
+    pf_l_puro = float(df_nfl_l["Puntos/Carreras a Favor"].mean()) if not df_nfl_l.empty else media_nfl_home
+    pa_l_puro = float(df_nfl_l["Puntos/Carreras en Contra"].mean()) if not df_nfl_l.empty else media_nfl_away
+    pf_v_puro = float(df_nfl_v["Puntos/Carreras a Favor"].mean()) if not df_nfl_v.empty else media_nfl_away
+    pa_v_puro = float(df_nfl_v["Puntos/Carreras en Contra"].mean()) if not df_nfl_v.empty else media_nfl_home
 
     pj_nf_l, pj_nf_v = len(df_nfl_l), len(df_nfl_v)
     if usar_bayes_nfl:
@@ -1215,10 +1286,10 @@ elif deporte_activo.startswith("🏈"):
 
         st.markdown(f"**🏠 Últimos {len(df_nfl_l)} partidos de {nf_l} jugando en CASA (Local):**")
         if not df_nfl_l.empty:
-            st.dataframe(df_nfl_l, use_container_width=True, hide_index=True)
+            st.dataframe(df_nfl_l.rename(columns={"Puntos/Carreras a Favor": "Puntos Anotados", "Puntos/Carreras en Contra": "Puntos Recibidos", "Total Marcador": "Total Puntos"}), use_container_width=True, hide_index=True)
         st.markdown(f"**✈️ Últimos {len(df_nfl_v)} partidos de {nf_v} jugando de GIRA (Visita):**")
         if not df_nfl_v.empty:
-            st.dataframe(df_nfl_v, use_container_width=True, hide_index=True)
+            st.dataframe(df_nfl_v.rename(columns={"Puntos/Carreras a Favor": "Puntos Anotados", "Puntos/Carreras en Contra": "Puntos Recibidos", "Total Marcador": "Total Puntos"}), use_container_width=True, hide_index=True)
 
     proy_l = (pf_l + pa_v) / 2.0
     proy_v = (pf_v + pa_l) / 2.0
@@ -1239,7 +1310,7 @@ elif deporte_activo.startswith("🏈"):
     st.markdown(f"### 🏈 {nf_l} vs. {nf_v} <span style='font-size:16px; color:#71717a;'>(NFL • Auditoría Local vs. Visita)</span>", unsafe_allow_html=True)
     fk1, fk2, fk3 = st.columns(3)
     fk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total Esperado: {tot_nfl:.1f} pts")
-    fk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Spread Esp.: {proy_l - proy_v:+.1f}")
+    fk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Diferencial Esp.: {proy_l - proy_v:+.1f}")
     fk3.metric("📈 Prob. Over / Under", f"{p_ov_nfl*100:.1f}% Over {linea_nfl}", f"{(1-p_ov_nfl)*100:.1f}% Under {linea_nfl}")
 
     ftab1, ftab2 = st.tabs(["🎯 1. Mercados NFL (Betano)", "🔴 2. Radar En Vivo (In-Play)"])
@@ -1256,7 +1327,7 @@ elif deporte_activo.startswith("🏈"):
 
 
 # ==============================================================================
-# 5. MÓDULOS NBA (🏀) Y MLB (⚾) CON INTELIGENCIA DE BAJAS Y NOTICIAS
+# 5. MÓDULOS NBA (🏀) Y MLB (⚾) CON INTELIGENCIA DE BAJAS AUTO-CALCULADA
 # ==============================================================================
 else:
     if deporte_activo.startswith("🏀"):
@@ -1292,10 +1363,10 @@ else:
             st.dataframe(df_real_v, use_container_width=True, hide_index=True)
 
     def_pts = 112.0 if sport_p == "basketball" else 4.5
-    pf_l = (float(df_real_l["Anotados"].mean()) if not df_real_l.empty else def_pts) * mult_bajas_ul
-    pa_l = float(df_real_l["Recibidos"].mean()) if not df_real_l.empty else def_pts
-    pf_v = (float(df_real_v["Anotados"].mean()) if not df_real_v.empty else def_pts) * mult_bajas_uv
-    pa_v = float(df_real_v["Recibidos"].mean()) if not df_real_v.empty else def_pts
+    pf_l = (float(df_real_l["Puntos/Carreras a Favor"].mean()) if not df_real_l.empty else def_pts) * mult_bajas_ul
+    pa_l = float(df_real_l["Puntos/Carreras en Contra"].mean()) if not df_real_l.empty else def_pts
+    pf_v = (float(df_real_v["Puntos/Carreras a Favor"].mean()) if not df_real_v.empty else def_pts) * mult_bajas_uv
+    pa_v = float(df_real_v["Puntos/Carreras en Contra"].mean()) if not df_real_v.empty else def_pts
 
     proy_l = (pf_l + pa_v) / 2.0
     proy_v = (pf_v + pa_l) / 2.0
