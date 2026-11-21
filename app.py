@@ -5,20 +5,19 @@ import numpy as np
 from scipy.stats import poisson, norm
 import requests
 import urllib.parse
-import unicodedata
 import io
 import re
 from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 14.0 | Broadcast Visual & Glass Edition",
+    page_title="Pro Bet Analyzer 14.1 | Responsive Broadcast Edition",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS EJECUTIVOS (BROADCAST DARK & GLASSMORPHISM) ---
+# --- ESTILOS CSS EJECUTIVOS Y RESPONSIVE PARA CELULARES ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
@@ -35,75 +34,76 @@ html, body, [class*="css"] {
 
 section[data-testid="stSidebar"] {
     background-color: #121216;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-right: 1px solid rgba(255, 255, 255, 0.10);
+}
+section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span {
+    color: #e4e4e7 !important;
 }
 
 .main-banner {
     background: linear-gradient(135deg, #121216 0%, #1f1f24 55%, #ea580c 100%);
-    padding: 20px 28px;
+    padding: 18px 24px;
     border-radius: 16px;
     color: #ffffff;
-    margin-bottom: 20px;
-    box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+    margin-bottom: 18px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.45);
     border: 1px solid rgba(255, 107, 0, 0.35);
     border-left: 8px solid #ff6b00;
 }
 .main-banner h1 {
     color: #ffffff !important;
     margin: 0;
-    font-size: 1.95rem;
+    font-size: 1.85rem;
     font-weight: 900;
-    letter-spacing: -0.6px;
+    letter-spacing: -0.5px;
 }
 .main-banner p {
-    color: #d4d4d8 !important;
+    color: #e4e4e7 !important;
     margin: 5px 0 0 0;
-    font-size: 0.92rem;
+    font-size: 0.90rem;
 }
 
-/* TARJETAS KPI GLASS */
+/* TARJETAS KPI */
 div[data-testid="stMetric"] {
-    background: rgba(24, 24, 27, 0.85);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #18181b;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-top: 4px solid #ff6b00;
-    padding: 15px 18px;
+    padding: 14px 16px;
     border-radius: 14px;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35);
 }
 div[data-testid="stMetric"] label {
     color: #a1a1aa !important;
-    font-weight: 600 !important;
-    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+    font-size: 0.78rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
 }
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
     color: #ffffff !important;
     font-weight: 800 !important;
-    font-size: 1.55rem !important;
+    font-size: 1.45rem !important;
 }
 
 button[data-baseweb="tab"] {
     font-size: 14px !important;
     font-weight: 700 !important;
-    color: #e4e4e7 !important;
+    color: #f4f4f5 !important;
 }
 
-/* HERO CARD DE ENFRENTAMIENTO (EQUIPOS + ESCUDOS) */
+/* HERO CARD DE ENFRENTAMIENTO (DESKTOP + MÓVIL) */
 .hero-matchup {
-    background: linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,22,0.98) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: linear-gradient(180deg, #18181b 0%, #111114 100%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 18px;
-    padding: 24px 28px;
-    margin-bottom: 20px;
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5);
+    padding: 20px 22px;
+    margin-bottom: 18px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
 }
 .hero-grid {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    gap: 12px;
 }
 .hero-team {
     flex: 1;
@@ -111,103 +111,130 @@ button[data-baseweb="tab"] {
     flex-direction: column;
     align-items: center;
     text-align: center;
+    min-width: 0;
 }
 .hero-logo {
-    width: 86px;
-    height: 86px;
+    width: 82px;
+    height: 82px;
     object-fit: contain;
-    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.6));
-    margin-bottom: 10px;
-    transition: transform 0.25s ease;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.65));
+    margin-bottom: 8px;
 }
-.hero-logo:hover {
-    transform: scale(1.07);
+.hero-photo {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #ffffff;
+    background: #18181b;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.5);
+    margin-bottom: 8px;
 }
 .hero-team-name {
-    font-size: 1.35rem;
+    font-size: 1.25rem;
     font-weight: 800;
     color: #ffffff;
     line-height: 1.2;
+    word-wrap: break-word;
 }
 .hero-badge-loc {
-    background: rgba(255, 107, 0, 0.18);
-    color: #ff8c00;
-    border: 1px solid rgba(255, 107, 0, 0.4);
-    padding: 3px 10px;
+    background: rgba(255, 107, 0, 0.22);
+    color: #ff9e44;
+    border: 1px solid rgba(255, 107, 0, 0.45);
+    padding: 2px 10px;
     border-radius: 999px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    margin-top: 6px;
+    margin-top: 5px;
 }
 .hero-badge-vis {
-    background: rgba(56, 189, 248, 0.15);
-    color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.35);
-    padding: 3px 10px;
+    background: rgba(56, 189, 248, 0.20);
+    color: #7dd3fc;
+    border: 1px solid rgba(56, 189, 248, 0.40);
+    padding: 2px 10px;
     border-radius: 999px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    margin-top: 6px;
+    margin-top: 5px;
 }
 .hero-center {
-    flex: 1.2;
+    flex: 1.25;
     text-align: center;
-    padding: 0 12px;
+    padding: 0 8px;
 }
 .hero-league-pill {
-    background: rgba(255, 255, 255, 0.08);
-    color: #e4e4e7;
-    padding: 4px 14px;
+    background: rgba(255, 255, 255, 0.10);
+    color: #f4f4f5;
+    padding: 4px 12px;
     border-radius: 999px;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 700;
-    letter-spacing: 0.5px;
     display: inline-block;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 .hero-score {
-    font-size: 2.55rem;
+    font-size: 2.35rem;
     font-weight: 900;
     color: #ffffff;
     letter-spacing: -1px;
     margin: 2px 0;
+    white-space: nowrap;
 }
 .hero-sub {
-    color: #a1a1aa;
-    font-size: 0.85rem;
+    color: #d4d4d8;
+    font-size: 0.82rem;
     font-weight: 600;
 }
 .prob-bar-wrap {
-    margin-top: 16px;
+    margin-top: 14px;
     background: #27272a;
     border-radius: 999px;
     height: 12px;
     overflow: hidden;
     display: flex;
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
 }
 .prob-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     font-weight: 700;
     margin-top: 6px;
-    color: #d4d4d8;
+    color: #e4e4e7;
+    gap: 4px;
 }
 .injury-alert {
-    background: rgba(220, 38, 38, 0.16);
-    border: 1px solid rgba(248, 113, 113, 0.35);
+    background: rgba(220, 38, 38, 0.20);
+    border: 1px solid rgba(248, 113, 113, 0.40);
     border-left: 5px solid #ef4444;
     color: #fecaca;
     padding: 10px 14px;
     border-radius: 10px;
     margin-bottom: 14px;
-    font-size: 0.88rem;
+    font-size: 0.86rem;
+}
+
+/* ADAPTACIÓN PARA PANTALLAS DE CELULARES */
+@media (max-width: 768px) {
+    .main-banner { padding: 14px 16px; }
+    .main-banner h1 { font-size: 1.35rem; }
+    .main-banner p { font-size: 0.80rem; }
+    .hero-matchup { padding: 14px 10px; }
+    .hero-grid { gap: 6px; }
+    .hero-logo { width: 56px; height: 56px; }
+    .hero-photo { width: 62px; height: 62px; }
+    .hero-team-name { font-size: 0.95rem; }
+    .hero-score { font-size: 1.55rem; }
+    .hero-sub { font-size: 0.72rem; }
+    .hero-league-pill { font-size: 0.66rem; padding: 3px 8px; }
+    .prob-labels { font-size: 0.68rem; }
+    div[data-testid="stMetric"] { padding: 10px 12px; }
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1.2rem !important; }
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 14.0 <span style="color:#ff8c00;">| BROADCAST VISUAL & GLASS EDITION</span></h1>
-<p>Escudos Oficiales en Vivo • Perfiles Fotográficos ATP/WTA por Tipo de Cancha • Factor de Bajas Automático • Tarjetas & Shots on Goal</p>
+<h1>🏆 PRO BET ANALYZER 14.1 <span style="color:#ff8c00;">| BROADCAST & MOBILE SUITE</span></h1>
+<p>Escudos Oficiales • Perfiles Fotográficos ATP/WTA • Alto Contraste Legible • Adaptado para Celulares y PC</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -218,19 +245,12 @@ HEADERS_HTTP = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWe
 # ==============================================================================
 def generar_escudo_svg_data_uri(nombre, color_hex="#ff6b00"):
     letras = "".join([w[0] for w in nombre.split()[:2]]).upper() if nombre else "EQ"
-    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="90" height="90" viewBox="0 0 90 90">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#27272a"/><stop offset="100%" stop-color="#18181b"/></linearGradient></defs>
-    <path d="M45 6 L78 20 V46 C78 66 63 80 45 86 C27 80 12 66 12 46 V20 Z" fill="url(#g)" stroke="{color_hex}" stroke-width="4"/>
-    <text x="45" y="53" font-family="Arial, sans-serif" font-size="26" font-weight="bold" fill="#ffffff" text-anchor="middle">{letras}</text>
-    </svg>"""
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="90" height="90" viewBox="0 0 90 90"><path d="M45 6 L78 20 V46 C78 66 63 80 45 86 C27 80 12 66 12 46 V20 Z" fill="#18181b" stroke="{color_hex}" stroke-width="4"/><text x="45" y="53" font-family="Arial, sans-serif" font-size="26" font-weight="bold" fill="#ffffff" text-anchor="middle">{letras}</text></svg>'
     return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
 
 def generar_avatar_tenista_svg(nombre, color_hex="#38bdf8"):
     letras = "".join([w[0] for w in nombre.split()[:2]]).upper() if nombre else "TN"
-    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
-    <circle cx="48" cy="48" r="44" fill="#18181b" stroke="{color_hex}" stroke-width="4"/>
-    <text x="48" y="57" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">{letras}</text>
-    </svg>"""
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="44" fill="#18181b" stroke="{color_hex}" stroke-width="4"/><text x="48" y="57" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">{letras}</text></svg>'
     return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
 
 def buscar_logo_equipo(nombre_club, mapa_logos, color_fallback="#ff6b00"):
@@ -240,7 +260,6 @@ def buscar_logo_equipo(nombre_club, mapa_logos, color_fallback="#ff6b00"):
     n_low = nombre_club.lower().strip()
     if n_low in mapa_logos:
         return mapa_logos[n_low], fallback
-    # Coincidencia parcial por palabra clave > 3 letras
     palabras = [w for w in re.sub(r'[^a-zA-Z\s]', '', n_low).split() if len(w) > 3 and w not in ["club", "real", "sport", "united", "city", "athletic", "atletico", "deportivo", "calcio"]]
     for k_map, url_logo in mapa_logos.items():
         if any(p in k_map for p in palabras):
@@ -248,65 +267,45 @@ def buscar_logo_equipo(nombre_club, mapa_logos, color_fallback="#ff6b00"):
     return fallback, fallback
 
 def renderizar_hero_card_deporte(eq_l, eq_v, logo_l, fb_l, logo_v, fb_v, liga_txt, marcador_txt, sub_txt, p_l, p_x, p_v, baja_l=0, baja_v=0):
-    baja_l_html = f"<span style='background:rgba(239,68,68,0.2);color:#fca5a5;padding:2px 8px;border-radius:6px;font-size:0.72rem;margin-top:4px;'>🏥 Bajas: -{baja_l}%</span>" if baja_l > 0 else ""
-    baja_v_html = f"<span style='background:rgba(239,68,68,0.2);color:#fca5a5;padding:2px 8px;border-radius:6px;font-size:0.72rem;margin-top:4px;'>🏥 Bajas: -{baja_v}%</span>" if baja_v > 0 else ""
+    baja_l_html = f'<span style="background:rgba(239,68,68,0.25);color:#fecaca;padding:2px 8px;border-radius:6px;font-size:0.70rem;margin-top:4px;">🏥 Bajas: -{baja_l}%</span>' if baja_l > 0 else ''
+    baja_v_html = f'<span style="background:rgba(239,68,68,0.25);color:#fecaca;padding:2px 8px;border-radius:6px;font-size:0.70rem;margin-top:4px;">🏥 Bajas: -{baja_v}%</span>' if baja_v > 0 else ''
 
     if p_x is not None and p_x > 0.005:
-        bar_html = f"""
-        <div class="prob-bar-wrap">
-            <div style="width:{p_l*100:.1f}%; background:#ff6b00;"></div>
-            <div style="width:{p_x*100:.1f}%; background:#71717a;"></div>
-            <div style="width:{p_v*100:.1f}%; background:#38bdf8;"></div>
-        </div>
-        <div class="prob-labels">
-            <span style="color:#ff8c00;">🏠 {eq_l}: {p_l*100:.1f}%</span>
-            <span style="color:#a1a1aa;">Empate: {p_x*100:.1f}%</span>
-            <span style="color:#38bdf8;">{eq_v}: {p_v*100:.1f}% ✈️</span>
-        </div>
-        """
+        bar_html = f'<div class="prob-bar-wrap"><div style="width:{p_l*100:.1f}%; background:#ff6b00;"></div><div style="width:{p_x*100:.1f}%; background:#71717a;"></div><div style="width:{p_v*100:.1f}%; background:#38bdf8;"></div></div><div class="prob-labels"><span style="color:#ff9e44;">1: {p_l*100:.1f}%</span><span style="color:#d4d4d8;">X: {p_x*100:.1f}%</span><span style="color:#7dd3fc;">2: {p_v*100:.1f}%</span></div>'
     else:
-        bar_html = f"""
-        <div class="prob-bar-wrap">
-            <div style="width:{p_l*100:.1f}%; background:#ff6b00;"></div>
-            <div style="width:{p_v*100:.1f}%; background:#38bdf8;"></div>
-        </div>
-        <div class="prob-labels">
-            <span style="color:#ff8c00;">🏠 {eq_l}: {p_l*100:.1f}%</span>
-            <span style="color:#38bdf8;">{eq_v}: {p_v*100:.1f}% ✈️</span>
-        </div>
-        """
+        bar_html = f'<div class="prob-bar-wrap"><div style="width:{p_l*100:.1f}%; background:#ff6b00;"></div><div style="width:{p_v*100:.1f}%; background:#38bdf8;"></div></div><div class="prob-labels"><span style="color:#ff9e44;">{eq_l}: {p_l*100:.1f}%</span><span style="color:#7dd3fc;">{eq_v}: {p_v*100:.1f}%</span></div>'
 
-    html_hero = f"""
-    <div class="hero-matchup">
-        <div class="hero-grid">
-            <div class="hero-team">
-                <img src="{logo_l}" onerror="this.onerror=null;this.src='{fb_l}';" class="hero-logo"/>
-                <div class="hero-team-name">{eq_l}</div>
-                <span class="hero-badge-loc">🏠 LOCAL</span>
-                {baja_l_html}
-            </div>
-            <div class="hero-center">
-                <div class="hero-league-pill">{liga_txt}</div>
-                <div class="hero-score">{marcador_txt}</div>
-                <div class="hero-sub">{sub_txt}</div>
-                {bar_html}
-            </div>
-            <div class="hero-team">
-                <img src="{logo_v}" onerror="this.onerror=null;this.src='{fb_v}';" class="hero-logo"/>
-                <div class="hero-team-name">{eq_v}</div>
-                <span class="hero-badge-vis">✈️ VISITA</span>
-                {baja_v_html}
-            </div>
-        </div>
-    </div>
-    """
+    # HTML SIN SANGRÍA AL INICIO DE LÍNEA PARA QUE MARKDOWN LO RENDERICE PERFECTO
+    html_hero = (
+        f'<div class="hero-matchup">'
+        f'<div class="hero-grid">'
+        f'<div class="hero-team">'
+        f'<img src="{logo_l}" onerror="this.onerror=null;this.src=\'{fb_l}\';" class="hero-logo"/>'
+        f'<div class="hero-team-name">{eq_l}</div>'
+        f'<span class="hero-badge-loc">🏠 LOCAL</span>{baja_l_html}'
+        f'</div>'
+        f'<div class="hero-center">'
+        f'<div class="hero-league-pill">{liga_txt}</div>'
+        f'<div class="hero-score">{marcador_txt}</div>'
+        f'<div class="hero-sub">{sub_txt}</div>'
+        f'{bar_html}'
+        f'</div>'
+        f'<div class="hero-team">'
+        f'<img src="{logo_v}" onerror="this.onerror=null;this.src=\'{fb_v}\';" class="hero-logo"/>'
+        f'<div class="hero-team-name">{eq_v}</div>'
+        f'<span class="hero-badge-vis">✈️ VISITA</span>{baja_v_html}'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
     st.markdown(html_hero, unsafe_allow_html=True)
 
 def resaltar_valor(fila):
+    """Alto contraste nítido: fondo verde menta suave (#d1fae5) y texto verde bosque oscuro (#065f46)."""
     veredicto = str(fila.get("Veredicto", ""))
     if "✅" in veredicto or "🔥" in veredicto:
-        return ['background-color: rgba(16, 185, 129, 0.16); color: #6ee7b7; font-weight: 700;'] * len(fila)
-    return [''] * len(fila)
+        return ['background-color: #d1fae5; color: #065f46; font-weight: 800;'] * len(fila)
+    return ['color: #18181b; font-weight: 500;'] * len(fila)
 
 def mostrar_cancha_calor(eq_loc, eq_vis, dom_loc, dom_vis, intensidad_loc, intensidad_vis, deporte="futbol"):
     estilos = {
@@ -325,23 +324,19 @@ def mostrar_cancha_calor(eq_loc, eq_vis, dom_loc, dom_vis, intensidad_loc, inten
     rad_loc = int(95 + (intensidad_loc * 55))
     rad_vis = int(95 + (intensidad_vis * 55))
 
-    html_code = f"""
-<div style="background:{bg_pitch}; border: 3px solid {border_pitch}; border-radius: 14px; height: 250px; position: relative; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.35); font-family: system-ui, -apple-system, sans-serif;">
-<div style="position:absolute; left:50%; top:0; bottom:0; width:3px; background:{line_color}; transform:translateX(-50%);"></div>
-<div style="position:absolute; left:50%; top:50%; width:80px; height:80px; border:3px solid {line_color}; border-radius:50%; transform:translate(-50%, -50%);"></div>
-<div style="position:absolute; left:0; top:22%; bottom:22%; width:15%; border-right:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>
-<div style="position:absolute; right:0; top:22%; bottom:22%; width:15%; border-left:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>
-<div style="position:absolute; right:5%; top:50%; width:{rad_loc}px; height:{rad_loc}px; background:radial-gradient(circle, rgba(255,59,0,{op_loc}) 0%, rgba(255,145,0,{op_loc*0.65}) 45%, rgba(255,255,0,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>
-<div style="position:absolute; left:5%; top:50%; width:{rad_vis}px; height:{rad_vis}px; background:radial-gradient(circle, rgba(0,200,255,{op_vis}) 0%, rgba(0,110,255,{op_vis*0.65}) 45%, rgba(0,0,255,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>
-<div style="position:absolute; left:16px; top:12px; background:rgba(15,23,42,0.88); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-left: 4px solid #ff6b00;">
-🏠 {eq_loc} | Dominio: {dom_loc:.0f}%
-</div>
-<div style="position:absolute; right:16px; top:12px; background:rgba(15,23,42,0.88); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-right: 4px solid #38bdf8;">
-Dominio: {dom_vis:.0f}% | {eq_vis} ✈️
-</div>
-</div>
-"""
-    components.html(html_code, height=265)
+    html_code = (
+        f'<div style="background:{bg_pitch}; border: 3px solid {border_pitch}; border-radius: 14px; height: 240px; position: relative; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.35); font-family: system-ui, -apple-system, sans-serif;">'
+        f'<div style="position:absolute; left:50%; top:0; bottom:0; width:3px; background:{line_color}; transform:translateX(-50%);"></div>'
+        f'<div style="position:absolute; left:50%; top:50%; width:76px; height:76px; border:3px solid {line_color}; border-radius:50%; transform:translate(-50%, -50%);"></div>'
+        f'<div style="position:absolute; left:0; top:22%; bottom:22%; width:15%; border-right:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>'
+        f'<div style="position:absolute; right:0; top:22%; bottom:22%; width:15%; border-left:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>'
+        f'<div style="position:absolute; right:5%; top:50%; width:{rad_loc}px; height:{rad_loc}px; background:radial-gradient(circle, rgba(255,59,0,{op_loc}) 0%, rgba(255,145,0,{op_loc*0.65}) 45%, rgba(255,255,0,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>'
+        f'<div style="position:absolute; left:5%; top:50%; width:{rad_vis}px; height:{rad_vis}px; background:radial-gradient(circle, rgba(0,200,255,{op_vis}) 0%, rgba(0,110,255,{op_vis*0.65}) 45%, rgba(0,0,255,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>'
+        f'<div style="position:absolute; left:10px; top:10px; background:rgba(15,23,42,0.90); color:#fff; padding:5px 10px; border-radius:8px; font-weight:700; font-size:12px; border-left: 4px solid #ff6b00;">🏠 {eq_loc}: {dom_loc:.0f}%</div>'
+        f'<div style="position:absolute; right:10px; top:10px; background:rgba(15,23,42,0.90); color:#fff; padding:5px 10px; border-radius:8px; font-weight:700; font-size:12px; border-right: 4px solid #38bdf8;">{eq_vis}: {dom_vis:.0f}% ✈️</div>'
+        f'</div>'
+    )
+    components.html(html_code, height=255)
 
 # ==============================================================================
 # MOTOR DE INTELIGENCIA AUTOMÁTICA DE BAJAS, ESCUDOS Y NOTICIAS (ESPN / NHL API)
@@ -376,7 +371,6 @@ TRADUCCION_ESTADO_LESION = {
 
 @st.cache_data(ttl=3600)
 def obtener_catalogo_equipos_y_logos_espn(sport, league):
-    """Obtiene simultáneamente {Nombre_Equipo: ID_ESPN} y {nombre_lower: URL_Escudo_PNG}."""
     mapa_ids = {}
     mapa_logos = {}
     if not sport or not league:
@@ -508,7 +502,7 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
         if not df_inj.empty:
             st.warning(f"⚠️ **Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas en API ESPN) — Factor Auto-Calculado: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)**")
             cols_visibles = [c for c in df_inj.columns if not c.startswith("_")]
-            st.dataframe(df_inj[cols_visibles], use_container_width=True, hide_index=True)
+            st.dataframe(df_inj[cols_visibles].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
         else:
             st.info(f"ℹ️ Sin reporte médico activo en el feed público de ESPN para {eq_loc} vs. {eq_vis} (Factor Auto-Calculado: -{auto_pen_l}% / -{auto_pen_v}%).")
 
@@ -519,7 +513,7 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🏥 Factor de Incidencia (Auto-Calculado)")
-    st.sidebar.caption(f"🤖 Sugerencia automática según bajas detectadas: **{eq_loc} (-{auto_pen_l}%)** | **{eq_vis} (-{auto_pen_v}%)**")
+    st.sidebar.caption(f"🤖 Sugerencia automática: **{eq_loc} (-{auto_pen_l}%)** | **{eq_vis} (-{auto_pen_v}%)**")
     imp_loc = st.sidebar.slider(
         f"Penalización Ofensiva {eq_loc} (%)",
         min_value=0, max_value=30, value=auto_pen_l, step=5,
@@ -1013,11 +1007,10 @@ if deporte_activo.startswith("⚽"):
     prob_btts_no = float(np.sum(mat[0, :]) + np.sum(mat[:, 0]) - mat[0, 0])
     prob_btts_si = 1.0 - prob_btts_no
 
-    # HERO CARD CON ESCUDOS OFICIALES
     renderizar_hero_card_deporte(
         eq_l, eq_v, logo_eq_l, fb_eq_l, logo_eq_v, fb_eq_v,
         liga_sel, f"{lam_loc:.2f}  —  {lam_vis:.2f}",
-        f"Proyección de Goles Esperados (xG) • Total: {lam_loc+lam_vis:.2f} goles",
+        f"Goles Esperados (xG) • Total: {lam_loc+lam_vis:.2f} goles",
         prob_1, prob_x, prob_2, pct_baja_l, pct_baja_v
     )
 
@@ -1256,39 +1249,30 @@ elif deporte_activo.startswith("🎾"):
     fav_cuota_justa = 1.0 / max(p_gana_a, p_gana_b)
     fav_rk = rank_a if p_gana_a >= p_gana_b else rank_b
 
-    # TARJETA HERO DE TENIS CON FOTOS REALES Y TEXTURA DE CANCHA DINÁMICA
-    html_tenis_hero = f"""
-    <div style="background:{bg_cancha_card}; border: 2px solid {borde_cancha_card}; border-radius: 18px; padding: 24px 28px; margin-bottom: 20px; box-shadow: 0 14px 30px rgba(0,0,0,0.45); position: relative; overflow: hidden;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
-            <div style="flex:1; text-align:center;">
-                <img src="{foto_a}" onerror="this.onerror=null;this.src='{fb_foto_a}';" style="width:98px; height:98px; border-radius:50%; object-fit:cover; border:3px solid #ffffff; background:#18181b; box-shadow:0 6px 16px rgba(0,0,0,0.5);"/>
-                <div style="font-size:1.3rem; font-weight:800; color:#ffffff; margin-top:8px;">{jug_a}</div>
-                <span style="background:rgba(0,0,0,0.45); color:#ffffff; padding:3px 10px; border-radius:999px; font-size:0.78rem; font-weight:700;">Rank #{rank_a} • {int(pts_rank_a)} pts</span>
-            </div>
-            <div style="flex:1.3; text-align:center;">
-                <div style="background:rgba(0,0,0,0.45); color:#ffffff; padding:4px 14px; border-radius:999px; font-size:0.78rem; font-weight:800; display:inline-block; margin-bottom:8px;">
-                    {circuito} • {nombre_sup_corto.upper()}
-                </div>
-                <div style="font-size:2.2rem; font-weight:900; color:#ffffff;">{p_gana_a*100:.1f}%  —  {p_gana_b*100:.1f}%</div>
-                <div style="color:#f4f4f5; font-size:0.86rem; font-weight:600; margin-top:4px;">
-                    👑 Favorito(a): <b>{favorito_nom}</b> (#{fav_rk}) • Cuota Justa: <b>{fav_cuota_justa:.2f}</b>
-                </div>
-                <div style="color:#e4e4e7; font-size:0.82rem; margin-top:4px;">
-                    🔥 Aces Proyectados: <b>{aces_totales_esp}</b> ({aces_esp_a} + {aces_esp_b}) • Juegos Esp.: <b>{juegos_totales_esp}</b>
-                </div>
-                <div class="prob-bar-wrap" style="margin-top:12px;">
-                    <div style="width:{p_gana_a*100:.1f}%; background:#ff6b00;"></div>
-                    <div style="width:{p_gana_b*100:.1f}%; background:#38bdf8;"></div>
-                </div>
-            </div>
-            <div style="flex:1; text-align:center;">
-                <img src="{foto_b}" onerror="this.onerror=null;this.src='{fb_foto_b}';" style="width:98px; height:98px; border-radius:50%; object-fit:cover; border:3px solid #ffffff; background:#18181b; box-shadow:0 6px 16px rgba(0,0,0,0.5);"/>
-                <div style="font-size:1.3rem; font-weight:800; color:#ffffff; margin-top:8px;">{jug_b}</div>
-                <span style="background:rgba(0,0,0,0.45); color:#ffffff; padding:3px 10px; border-radius:999px; font-size:0.78rem; font-weight:700;">Rank #{rank_b} • {int(pts_rank_b)} pts</span>
-            </div>
-        </div>
-    </div>
-    """
+    # HTML SIN SANGRÍA PARA RENDERIZADO PERFECTO EN PC Y CELULARES
+    html_tenis_hero = (
+        f'<div class="hero-matchup" style="background:{bg_cancha_card}; border: 2px solid {borde_cancha_card};">'
+        f'<div class="hero-grid">'
+        f'<div class="hero-team">'
+        f'<img src="{foto_a}" onerror="this.onerror=null;this.src=\'{fb_foto_a}\';" class="hero-photo"/>'
+        f'<div class="hero-team-name">{jug_a}</div>'
+        f'<span style="background:rgba(0,0,0,0.50);color:#fff;padding:2px 10px;border-radius:999px;font-size:0.74rem;font-weight:700;margin-top:4px;">Rank #{rank_a} • {int(pts_rank_a)} pts</span>'
+        f'</div>'
+        f'<div class="hero-center">'
+        f'<div class="hero-league-pill" style="background:rgba(0,0,0,0.50);">{circuito} • {nombre_sup_corto.upper()}</div>'
+        f'<div class="hero-score">{p_gana_a*100:.1f}% — {p_gana_b*100:.1f}%</div>'
+        f'<div class="hero-sub" style="color:#ffffff;">👑 Fav: <b>{favorito_nom}</b> (#{fav_rk}) • Justa: <b>{fav_cuota_justa:.2f}</b></div>'
+        f'<div class="hero-sub" style="color:#f4f4f5;margin-top:3px;">🔥 Aces Esp: <b>{aces_totales_esp}</b> ({aces_esp_a}+{aces_esp_b}) • Juegos: <b>{juegos_totales_esp}</b></div>'
+        f'<div class="prob-bar-wrap"><div style="width:{p_gana_a*100:.1f}%; background:#ff6b00;"></div><div style="width:{p_gana_b*100:.1f}%; background:#38bdf8;"></div></div>'
+        f'</div>'
+        f'<div class="hero-team">'
+        f'<img src="{foto_b}" onerror="this.onerror=null;this.src=\'{fb_foto_b}\';" class="hero-photo"/>'
+        f'<div class="hero-team-name">{jug_b}</div>'
+        f'<span style="background:rgba(0,0,0,0.50);color:#fff;padding:2px 10px;border-radius:999px;font-size:0.74rem;font-weight:700;margin-top:4px;">Rank #{rank_b} • {int(pts_rank_b)} pts</span>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
     st.markdown(html_tenis_hero, unsafe_allow_html=True)
 
     with st.expander(f"📋 TABLA DE AUDITORÍA TENIS: Superficies, Aces, Noticias y Últimos Partidos ({jug_a} vs {jug_b})", expanded=False):
@@ -1442,9 +1426,9 @@ elif deporte_activo.startswith("🏒"):
 
     renderizar_hero_card_deporte(
         nh_l, nh_v, logo_nh_l, fb_nh_l, logo_nh_v, fb_nh_v,
-        "🏒 NHL HOCKEY SOBRE HIELO • LOCAL VS. VISITA",
+        "🏒 NHL HOCKEY • LOCAL VS. VISITA",
         f"{lam_nhl_l:.2f}  —  {lam_nhl_v:.2f}",
-        f"Goles Esp. (60m): {tot_nhl:.2f} • Shots on Goal (SOG) Esp.: {sog_totales_esp}",
+        f"Goles Esp. (60m): {tot_nhl:.2f} • Tiros al Arco (SOG) Esp.: {sog_totales_esp}",
         p_ml_l, None, p_ml_v, pct_baja_nl, pct_baja_nv
     )
 
@@ -1605,7 +1589,7 @@ elif deporte_activo.startswith("🏈"):
 
 
 # ==============================================================================
-# 5. MÓDULOS NBA (🏀) Y MLB (⚾) CON ESCUDOS OFICIALES Y BAJAS AUTO-CALCULADAS
+# 5. MÓDULOS NBA (🏀) Y MLB (⚾) CON ESCUDOS OFICIALES Y BAJAS AUTO-CALCULADA
 # ==============================================================================
 else:
     if deporte_activo.startswith("🏀"):
