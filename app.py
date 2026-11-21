@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import poisson, norm
 import requests
+import urllib.parse
 import unicodedata
 import io
 import re
@@ -11,80 +12,300 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 13.1 | Auto-Injury & Spanish Audit",
+    page_title="Pro Bet Analyzer 14.0 | Broadcast Visual & Glass Edition",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS EJECUTIVOS (BROADCAST DARK & GLASSMORPHISM) ---
 st.markdown("""
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-variant-numeric: tabular-nums;
+}
+
+.stApp {
+    background-color: #09090b;
+    color: #f4f4f5;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #121216;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .main-banner {
-    background: linear-gradient(135deg, #18181b 0%, #27272a 60%, #ea580c 100%);
-    padding: 22px 28px;
-    border-radius: 14px;
+    background: linear-gradient(135deg, #121216 0%, #1f1f24 55%, #ea580c 100%);
+    padding: 20px 28px;
+    border-radius: 16px;
     color: #ffffff;
-    margin-bottom: 22px;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.12);
+    margin-bottom: 20px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+    border: 1px solid rgba(255, 107, 0, 0.35);
     border-left: 8px solid #ff6b00;
 }
 .main-banner h1 {
     color: #ffffff !important;
     margin: 0;
-    font-size: 2.0rem;
-    font-weight: 800;
-    letter-spacing: -0.5px;
+    font-size: 1.95rem;
+    font-weight: 900;
+    letter-spacing: -0.6px;
 }
 .main-banner p {
-    color: #e4e4e7 !important;
-    margin: 6px 0 0 0;
-    font-size: 0.95rem;
+    color: #d4d4d8 !important;
+    margin: 5px 0 0 0;
+    font-size: 0.92rem;
 }
+
+/* TARJETAS KPI GLASS */
 div[data-testid="stMetric"] {
-    background-color: #ffffff;
-    border: 1px solid #e4e4e7;
+    background: rgba(24, 24, 27, 0.85);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-top: 4px solid #ff6b00;
-    padding: 16px 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+    padding: 15px 18px;
+    border-radius: 14px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.3);
 }
+div[data-testid="stMetric"] label {
+    color: #a1a1aa !important;
+    font-weight: 600 !important;
+    font-size: 0.82rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 1.55rem !important;
+}
+
 button[data-baseweb="tab"] {
-    font-size: 15px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
+    color: #e4e4e7 !important;
 }
-.fav-banner {
-    background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
-    color: #f8fafc;
-    padding: 14px 20px;
-    border-radius: 10px;
-    border-left: 6px solid #22c55e;
-    margin-bottom: 16px;
-    font-size: 0.96rem;
+
+/* HERO CARD DE ENFRENTAMIENTO (EQUIPOS + ESCUDOS) */
+.hero-matchup {
+    background: linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,22,0.98) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 18px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5);
+}
+.hero-grid {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.hero-team {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+.hero-logo {
+    width: 86px;
+    height: 86px;
+    object-fit: contain;
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.6));
+    margin-bottom: 10px;
+    transition: transform 0.25s ease;
+}
+.hero-logo:hover {
+    transform: scale(1.07);
+}
+.hero-team-name {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.2;
+}
+.hero-badge-loc {
+    background: rgba(255, 107, 0, 0.18);
+    color: #ff8c00;
+    border: 1px solid rgba(255, 107, 0, 0.4);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: 6px;
+}
+.hero-badge-vis {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: 6px;
+}
+.hero-center {
+    flex: 1.2;
+    text-align: center;
+    padding: 0 12px;
+}
+.hero-league-pill {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e4e4e7;
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    margin-bottom: 10px;
+}
+.hero-score {
+    font-size: 2.55rem;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: -1px;
+    margin: 2px 0;
+}
+.hero-sub {
+    color: #a1a1aa;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.prob-bar-wrap {
+    margin-top: 16px;
+    background: #27272a;
+    border-radius: 999px;
+    height: 12px;
+    overflow: hidden;
+    display: flex;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+.prob-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-top: 6px;
+    color: #d4d4d8;
 }
 .injury-alert {
-    background-color: #fef2f2;
-    border: 1px solid #fecaca;
-    border-left: 5px solid #dc2626;
-    color: #7f1d1d;
+    background: rgba(220, 38, 38, 0.16);
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    border-left: 5px solid #ef4444;
+    color: #fecaca;
     padding: 10px 14px;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    font-size: 0.90rem;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    font-size: 0.88rem;
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 13.1 <span style="color:#ff8c00;">| AUTO-INJURY & SPANISH AUDIT</span></h1>
-<p>Cálculo Automático del Factor de Incidencia por Bajas • Tablas 100% en Español • Tarjetas Reales y Shots on Goal (SOG)</p>
+<h1>🏆 PRO BET ANALYZER 14.0 <span style="color:#ff8c00;">| BROADCAST VISUAL & GLASS EDITION</span></h1>
+<p>Escudos Oficiales en Vivo • Perfiles Fotográficos ATP/WTA por Tipo de Cancha • Factor de Bajas Automático • Tarjetas & Shots on Goal</p>
 </div>
 """, unsafe_allow_html=True)
 
 HEADERS_HTTP = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
+# ==============================================================================
+# UTILIDADES VISUALES: ESCUDOS SVG DE RESPALDO, HERO CARDS Y CANCHA DE CALOR
+# ==============================================================================
+def generar_escudo_svg_data_uri(nombre, color_hex="#ff6b00"):
+    letras = "".join([w[0] for w in nombre.split()[:2]]).upper() if nombre else "EQ"
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="90" height="90" viewBox="0 0 90 90">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#27272a"/><stop offset="100%" stop-color="#18181b"/></linearGradient></defs>
+    <path d="M45 6 L78 20 V46 C78 66 63 80 45 86 C27 80 12 66 12 46 V20 Z" fill="url(#g)" stroke="{color_hex}" stroke-width="4"/>
+    <text x="45" y="53" font-family="Arial, sans-serif" font-size="26" font-weight="bold" fill="#ffffff" text-anchor="middle">{letras}</text>
+    </svg>"""
+    return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
+
+def generar_avatar_tenista_svg(nombre, color_hex="#38bdf8"):
+    letras = "".join([w[0] for w in nombre.split()[:2]]).upper() if nombre else "TN"
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+    <circle cx="48" cy="48" r="44" fill="#18181b" stroke="{color_hex}" stroke-width="4"/>
+    <text x="48" y="57" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">{letras}</text>
+    </svg>"""
+    return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
+
+def buscar_logo_equipo(nombre_club, mapa_logos, color_fallback="#ff6b00"):
+    fallback = generar_escudo_svg_data_uri(nombre_club, color_fallback)
+    if not mapa_logos:
+        return fallback, fallback
+    n_low = nombre_club.lower().strip()
+    if n_low in mapa_logos:
+        return mapa_logos[n_low], fallback
+    # Coincidencia parcial por palabra clave > 3 letras
+    palabras = [w for w in re.sub(r'[^a-zA-Z\s]', '', n_low).split() if len(w) > 3 and w not in ["club", "real", "sport", "united", "city", "athletic", "atletico", "deportivo", "calcio"]]
+    for k_map, url_logo in mapa_logos.items():
+        if any(p in k_map for p in palabras):
+            return url_logo, fallback
+    return fallback, fallback
+
+def renderizar_hero_card_deporte(eq_l, eq_v, logo_l, fb_l, logo_v, fb_v, liga_txt, marcador_txt, sub_txt, p_l, p_x, p_v, baja_l=0, baja_v=0):
+    baja_l_html = f"<span style='background:rgba(239,68,68,0.2);color:#fca5a5;padding:2px 8px;border-radius:6px;font-size:0.72rem;margin-top:4px;'>🏥 Bajas: -{baja_l}%</span>" if baja_l > 0 else ""
+    baja_v_html = f"<span style='background:rgba(239,68,68,0.2);color:#fca5a5;padding:2px 8px;border-radius:6px;font-size:0.72rem;margin-top:4px;'>🏥 Bajas: -{baja_v}%</span>" if baja_v > 0 else ""
+
+    if p_x is not None and p_x > 0.005:
+        bar_html = f"""
+        <div class="prob-bar-wrap">
+            <div style="width:{p_l*100:.1f}%; background:#ff6b00;"></div>
+            <div style="width:{p_x*100:.1f}%; background:#71717a;"></div>
+            <div style="width:{p_v*100:.1f}%; background:#38bdf8;"></div>
+        </div>
+        <div class="prob-labels">
+            <span style="color:#ff8c00;">🏠 {eq_l}: {p_l*100:.1f}%</span>
+            <span style="color:#a1a1aa;">Empate: {p_x*100:.1f}%</span>
+            <span style="color:#38bdf8;">{eq_v}: {p_v*100:.1f}% ✈️</span>
+        </div>
+        """
+    else:
+        bar_html = f"""
+        <div class="prob-bar-wrap">
+            <div style="width:{p_l*100:.1f}%; background:#ff6b00;"></div>
+            <div style="width:{p_v*100:.1f}%; background:#38bdf8;"></div>
+        </div>
+        <div class="prob-labels">
+            <span style="color:#ff8c00;">🏠 {eq_l}: {p_l*100:.1f}%</span>
+            <span style="color:#38bdf8;">{eq_v}: {p_v*100:.1f}% ✈️</span>
+        </div>
+        """
+
+    html_hero = f"""
+    <div class="hero-matchup">
+        <div class="hero-grid">
+            <div class="hero-team">
+                <img src="{logo_l}" onerror="this.onerror=null;this.src='{fb_l}';" class="hero-logo"/>
+                <div class="hero-team-name">{eq_l}</div>
+                <span class="hero-badge-loc">🏠 LOCAL</span>
+                {baja_l_html}
+            </div>
+            <div class="hero-center">
+                <div class="hero-league-pill">{liga_txt}</div>
+                <div class="hero-score">{marcador_txt}</div>
+                <div class="hero-sub">{sub_txt}</div>
+                {bar_html}
+            </div>
+            <div class="hero-team">
+                <img src="{logo_v}" onerror="this.onerror=null;this.src='{fb_v}';" class="hero-logo"/>
+                <div class="hero-team-name">{eq_v}</div>
+                <span class="hero-badge-vis">✈️ VISITA</span>
+                {baja_v_html}
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(html_hero, unsafe_allow_html=True)
+
 def resaltar_valor(fila):
     veredicto = str(fila.get("Veredicto", ""))
     if "✅" in veredicto or "🔥" in veredicto:
-        return ['background-color: rgba(22, 163, 74, 0.15); font-weight: 600;'] * len(fila)
+        return ['background-color: rgba(16, 185, 129, 0.16); color: #6ee7b7; font-weight: 700;'] * len(fila)
     return [''] * len(fila)
 
 def mostrar_cancha_calor(eq_loc, eq_vis, dom_loc, dom_vis, intensidad_loc, intensidad_vis, deporte="futbol"):
@@ -105,17 +326,17 @@ def mostrar_cancha_calor(eq_loc, eq_vis, dom_loc, dom_vis, intensidad_loc, inten
     rad_vis = int(95 + (intensidad_vis * 55))
 
     html_code = f"""
-<div style="background:{bg_pitch}; border: 3px solid {border_pitch}; border-radius: 14px; height: 250px; position: relative; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.18); font-family: system-ui, -apple-system, sans-serif;">
+<div style="background:{bg_pitch}; border: 3px solid {border_pitch}; border-radius: 14px; height: 250px; position: relative; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.35); font-family: system-ui, -apple-system, sans-serif;">
 <div style="position:absolute; left:50%; top:0; bottom:0; width:3px; background:{line_color}; transform:translateX(-50%);"></div>
 <div style="position:absolute; left:50%; top:50%; width:80px; height:80px; border:3px solid {line_color}; border-radius:50%; transform:translate(-50%, -50%);"></div>
 <div style="position:absolute; left:0; top:22%; bottom:22%; width:15%; border-right:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>
 <div style="position:absolute; right:0; top:22%; bottom:22%; width:15%; border-left:3px solid {line_color}; border-top:3px solid {line_color}; border-bottom:3px solid {line_color};"></div>
 <div style="position:absolute; right:5%; top:50%; width:{rad_loc}px; height:{rad_loc}px; background:radial-gradient(circle, rgba(255,59,0,{op_loc}) 0%, rgba(255,145,0,{op_loc*0.65}) 45%, rgba(255,255,0,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>
 <div style="position:absolute; left:5%; top:50%; width:{rad_vis}px; height:{rad_vis}px; background:radial-gradient(circle, rgba(0,200,255,{op_vis}) 0%, rgba(0,110,255,{op_vis*0.65}) 45%, rgba(0,0,255,0) 75%); transform:translateY(-50%); border-radius:50%; pointer-events:none;"></div>
-<div style="position:absolute; left:16px; top:12px; background:rgba(15,23,42,0.85); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-left: 4px solid #ff6b00;">
+<div style="position:absolute; left:16px; top:12px; background:rgba(15,23,42,0.88); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-left: 4px solid #ff6b00;">
 🏠 {eq_loc} | Dominio: {dom_loc:.0f}%
 </div>
-<div style="position:absolute; right:16px; top:12px; background:rgba(15,23,42,0.85); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-right: 4px solid #38bdf8;">
+<div style="position:absolute; right:16px; top:12px; background:rgba(15,23,42,0.88); color:#fff; padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; border-right: 4px solid #38bdf8;">
 Dominio: {dom_vis:.0f}% | {eq_vis} ✈️
 </div>
 </div>
@@ -123,7 +344,7 @@ Dominio: {dom_vis:.0f}% | {eq_vis} ✈️
     components.html(html_code, height=265)
 
 # ==============================================================================
-# MOTOR DE INTELIGENCIA AUTOMÁTICA DE BAJAS, LESIONES Y NOTICIAS (ESPN API)
+# MOTOR DE INTELIGENCIA AUTOMÁTICA DE BAJAS, ESCUDOS Y NOTICIAS (ESPN / NHL API)
 # ==============================================================================
 ESPN_LEAGUE_MAP = {
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": ("soccer", "eng.1"),
@@ -153,9 +374,38 @@ TRADUCCION_ESTADO_LESION = {
     "Probable": "🟢 Probable"
 }
 
+@st.cache_data(ttl=3600)
+def obtener_catalogo_equipos_y_logos_espn(sport, league):
+    """Obtiene simultáneamente {Nombre_Equipo: ID_ESPN} y {nombre_lower: URL_Escudo_PNG}."""
+    mapa_ids = {}
+    mapa_logos = {}
+    if not sport or not league:
+        return mapa_ids, mapa_logos
+    try:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=120"
+        r = requests.get(url, headers=HEADERS_HTTP, timeout=8).json()
+        for sp in r.get("sports", []):
+            for lg in sp.get("leagues", []):
+                for t_wrap in lg.get("teams", []):
+                    tm = t_wrap.get("team", {})
+                    nombre = tm.get("displayName", "")
+                    corto = tm.get("shortDisplayName", "")
+                    tid = str(tm.get("id", ""))
+                    logos = tm.get("logos", [])
+                    logo_url = logos[0].get("href", "") if logos else tm.get("logo", "")
+                    if nombre and tid:
+                        mapa_ids[nombre] = tid
+                    if logo_url:
+                        if nombre:
+                            mapa_logos[nombre.lower()] = logo_url
+                        if corto:
+                            mapa_logos[corto.lower()] = logo_url
+    except Exception:
+        pass
+    return mapa_ids, mapa_logos
+
 @st.cache_data(ttl=900)
 def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
-    """Consulta en vivo /injuries de ESPN y calcula el peso de impacto por jugador ausente."""
     filas_inj = []
     if not sport or not league:
         return pd.DataFrame()
@@ -180,7 +430,6 @@ def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
                     est_esp = TRADUCCION_ESTADO_LESION.get(est_raw, f"🟡 {est_raw}")
                     det = item.get("shortComment", item.get("longComment", "Reporte médico activo"))
 
-                    # Calcular peso individual de incidencia (%) según estado y posición clave
                     est_low = est_raw.lower()
                     if any(k in est_low for k in ["out", "injured", "ir", "suspen"]):
                         base_w = 3.0
@@ -191,10 +440,9 @@ def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
                     else:
                         base_w = 0.0
 
-                    # Multiplicador por posición ofensiva crítica
                     pos_up = str(pos).upper()
                     if pos_up in ["QB"]:
-                        base_w *= 4.5  # Quarterback titular en NFL tiene altísima incidencia
+                        base_w *= 4.5
                     elif pos_up in ["FW", "ST", "CF", "LW", "RW", "PG", "SG", "SF", "PF", "C", "P", "SP"]:
                         base_w *= 1.35
 
@@ -212,7 +460,6 @@ def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
 
 @st.cache_data(ttl=900)
 def obtener_noticias_relevantes_espn(sport, league, eq_a, eq_b):
-    """Extrae titulares recientes desde /news de ESPN filtrados por los protagonistas del partido."""
     titulares = []
     if not sport or not league:
         return titulares
@@ -232,13 +479,11 @@ def obtener_noticias_relevantes_espn(sport, league, eq_a, eq_b):
     return titulares[:6]
 
 def calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis):
-    """Calcula automáticamente el % de penalización ofensiva (0 a 30%) en múltiplos de 5%."""
     raw_l, raw_v = 0.0, 0.0
     if not df_inj.empty and "_peso_auto" in df_inj.columns:
         raw_l += float(df_inj[df_inj["Equipo"] == eq_loc]["_peso_auto"].sum())
         raw_v += float(df_inj[df_inj["Equipo"] == eq_vis]["_peso_auto"].sum())
 
-    # Revisar también palabras clave de bajas en titulares recientes
     palabras_alerta = ["injury", "injured", "out for", "ruled out", "sidelined", "lesion", "baja", "suspend", "miss"]
     claves_l = [w.lower() for w in eq_loc.split() if len(w) > 3]
     claves_v = [w.lower() for w in eq_vis.split() if len(w) > 3]
@@ -250,13 +495,11 @@ def calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis):
             if any(kv in txt for kv in claves_v):
                 raw_v += 2.5
 
-    # Redondear al múltiplo de 5 más cercano con tope máximo de 30%
     pen_l = int(min(max(round(raw_l / 5.0) * 5, 0), 30))
     pen_v = int(min(max(round(raw_v / 5.0) * 5, 0), 30))
     return pen_l, pen_v
 
 def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
-    """Consulta bajas y noticias en vivo, calcula el Factor de Incidencia automáticamente y llena los sliders."""
     df_inj = obtener_reporte_lesiones_espn(sport, league, eq_loc, eq_vis)
     noticias = obtener_noticias_relevantes_espn(sport, league, eq_loc, eq_vis)
     auto_pen_l, auto_pen_v = calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis)
@@ -280,13 +523,11 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
     imp_loc = st.sidebar.slider(
         f"Penalización Ofensiva {eq_loc} (%)",
         min_value=0, max_value=30, value=auto_pen_l, step=5,
-        help="Calculado automáticamente desde el reporte médico y noticias de ESPN. Puedes ajustarlo manualmente si lo deseas.",
         key=f"imp_l_{key_prefix}"
     )
     imp_vis = st.sidebar.slider(
         f"Penalización Ofensiva {eq_vis} (%)",
         min_value=0, max_value=30, value=auto_pen_v, step=5,
-        help="Calculado automáticamente desde el reporte médico y noticias de ESPN. Puedes ajustarlo manualmente si lo deseas.",
         key=f"imp_v_{key_prefix}"
     )
     return 1.0 - (imp_loc / 100.0), 1.0 - (imp_vis / 100.0), imp_loc, imp_vis
@@ -334,24 +575,6 @@ def cargar_datos_nations_league():
         except Exception:
             pass
     return pd.DataFrame()
-
-@st.cache_data(ttl=1800)
-def obtener_catalogo_equipos_espn(sport, league):
-    mapa_ids = {}
-    try:
-        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=100"
-        r = requests.get(url, headers=HEADERS_HTTP, timeout=8).json()
-        for sp in r.get("sports", []):
-            for lg in sp.get("leagues", []):
-                for t_wrap in lg.get("teams", []):
-                    tm = t_wrap.get("team", {})
-                    nombre = tm.get("displayName")
-                    tid = str(tm.get("id", ""))
-                    if nombre and tid:
-                        mapa_ids[nombre] = tid
-    except Exception:
-        pass
-    return mapa_ids
 
 @st.cache_data(ttl=900)
 def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, n_partidos=5, condicion_filtro="ALL"):
@@ -405,16 +628,20 @@ def extraer_ultimos_partidos_reales_espn(sport, league, team_id, nombre_equipo, 
 @st.cache_data(ttl=1800)
 def obtener_catalogo_equipos_nhl():
     mapa = {}
+    mapa_logos = {}
     try:
         r = requests.get("https://api-web.nhle.com/v1/standings/now", headers=HEADERS_HTTP, timeout=8).json()
         for t in r.get("standings", []):
             nombre = t.get("teamName", {}).get("default", "")
             abbrev = t.get("teamAbbrev", {}).get("default", "")
+            logo_url = t.get("teamLogo", "")
             if nombre and abbrev:
                 mapa[nombre] = abbrev
+                if logo_url:
+                    mapa_logos[nombre.lower()] = logo_url
     except Exception:
         pass
-    return mapa
+    return mapa, mapa_logos
 
 @st.cache_data(ttl=1200)
 def obtener_sog_boxscore_nhl(game_id):
@@ -486,7 +713,7 @@ def extraer_ultimos_partidos_nhl_con_sog(abbrev, condicion="HOME", n_partidos=5)
     return df_out
 
 # ==============================================================================
-# MOTOR DE TENIS CONECTADO EN VIVO A ESPN + MODELO DE ACES POR SUPERFICIE
+# MOTOR DE TENIS CONECTADO EN VIVO A ESPN (FOTOS REALES + SUPERFICIES + ACES)
 # ==============================================================================
 ACES_BASE_AUDITADOS = {
     "Jannik Sinner": 8.8, "Carlos Alcaraz": 6.4, "Alexander Zverev": 10.8, "Novak Djokovic": 7.6,
@@ -521,8 +748,10 @@ def obtener_rankings_oficiales_espn_tenis(circuito):
                 aid = str(ath.get("id", ""))
                 rk = int(item.get("current", 100))
                 pts = float(item.get("points", 0))
+                foto_api = ath.get("headshot", {}).get("href", "") if isinstance(ath.get("headshot"), dict) else ""
+                foto_cdn = foto_api if foto_api else (f"https://a.espncdn.com/i/headshots/tennis/players/full/{aid}.png" if aid else "")
                 if nombre:
-                    catalogo[nombre] = {"id": aid, "rank": rk, "points": pts}
+                    catalogo[nombre] = {"id": aid, "rank": rk, "points": pts, "foto": foto_cdn}
     except Exception:
         pass
     return catalogo
@@ -650,17 +879,17 @@ def calcular_perfil_superficie_real(df_partidos, rank_actual, circuito, nombre_t
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
     "⚽ Fútbol (15 Ligas + Tarjetas Reales + Bajas Auto)",
-    "🎾 Tenis (ATP / WTA Superficie, Aces + Estado Físico)",
-    "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Bajas Auto)",
-    "🏈 Fútbol Americano (NFL - Local/Visita + Bajas Auto)",
-    "🏀 Basketball (NBA - API ESPN + Bajas Auto)",
-    "⚾ Béisbol (MLB - API ESPN + Bajas Auto)"
+    "🎾 Tenis (ATP / WTA Superficie, Aces + Fotos)",
+    "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Escudos)",
+    "🏈 Fútbol Americano (NFL - Local/Visita + Escudos)",
+    "🏀 Basketball (NBA - API ESPN + Escudos)",
+    "⚾ Béisbol (MLB - API ESPN + Escudos)"
 ]
 deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opciones_deportes, index=0)
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (TABLAS EN ESPAÑOL + TARJETAS REALES + BAJAS AUTOMÁTICAS)
+# 1. MÓDULO FÚTBOL (HERO CARD CON ESCUDOS + TARJETAS + BAJAS AUTOMÁTICAS)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -713,6 +942,10 @@ if deporte_activo.startswith("⚽"):
     usar_amortiguador = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano (< 6 PJ)", value=False)
 
     espn_sp, espn_lg = ESPN_LEAGUE_MAP.get(liga_sel, ("soccer", "eng.1"))
+    _, mapa_logos_fut = obtener_catalogo_equipos_y_logos_espn(espn_sp, espn_lg)
+    logo_eq_l, fb_eq_l = buscar_logo_equipo(eq_l, mapa_logos_fut, "#ff6b00")
+    logo_eq_v, fb_eq_v = buscar_logo_equipo(eq_v, mapa_logos_fut, "#38bdf8")
+
     mult_bajas_l, mult_bajas_v, pct_baja_l, pct_baja_v = renderizar_panel_bajas_y_factor(espn_sp, espn_lg, eq_l, eq_v, f"fut_{eq_l}_{eq_v}")
 
     p_l = df_csv[df_csv['HomeTeam'] == eq_l].tail(5)
@@ -765,46 +998,6 @@ if deporte_activo.startswith("⚽"):
         tarj_tot_esp = 4.40
         pts_tarj_esp = 4.60
 
-    # Diccionario de traducción al español para la Tabla de Auditoría de Fútbol
-    TRADUCCION_COLS_FUTBOL = {
-        "Date": "Fecha",
-        "Tournament": "Torneo",
-        "HomeTeam": "Equipo Local",
-        "AwayTeam": "Equipo Visita",
-        "FTHG": "Goles Local (A Favor)",
-        "FTAG": "Goles Visita (En Contra)",
-        "HS": "Tiros Totales Local",
-        "HST": "Tiros al Arco Local",
-        "HC": "Córners Local",
-        "HY": "Amarillas Local",
-        "HR": "Rojas Local",
-        "AS": "Tiros Totales Visita",
-        "AST": "Tiros al Arco Visita",
-        "AC": "Córners Visita",
-        "AY": "Amarillas Visita",
-        "AR": "Rojas Visita"
-    }
-
-    with st.expander(f"📋 TABLA DE AUDITORÍA: Partidos reales, Tiros, Córners y Tarjetas ({eq_l} vs {eq_v})", expanded=True):
-        if tiene_tiros_csv and tiene_tarjetas_csv:
-            st.success("✅ Telemetría Completa Opta / Football-Data: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
-        else:
-            st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
-        if pct_baja_l > 0 or pct_baja_v > 0:
-            st.markdown(f"<div class='injury-alert'>🏥 <b>Factor de Incidencia Aplicado:</b> {eq_l} (-{pct_baja_l}% potencia ofensiva) | {eq_v} (-{pct_baja_v}% potencia ofensiva).</div>", unsafe_allow_html=True)
-
-        cols_l = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
-        st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL:**")
-        st.dataframe(p_l[cols_l].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
-
-        # Para visita, etiquetar claramente goles recibidos vs anotados
-        trad_vis = dict(TRADUCCION_COLS_FUTBOL)
-        trad_vis["FTHG"] = "Goles Local (En Contra)"
-        trad_vis["FTAG"] = "Goles Visita (A Favor)"
-        cols_v = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
-        st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE:**")
-        st.dataframe(p_v[cols_v].rename(columns=trad_vis), use_container_width=True, hide_index=True)
-
     lam_loc = max((gf_l * gc_v) / media_liga, 0.15)
     lam_vis = max((gf_v * gc_l) / media_liga, 0.12)
     mat = np.zeros((9, 9))
@@ -819,6 +1012,40 @@ if deporte_activo.startswith("⚽"):
     prob_o25 = 1.0 - prob_u25
     prob_btts_no = float(np.sum(mat[0, :]) + np.sum(mat[:, 0]) - mat[0, 0])
     prob_btts_si = 1.0 - prob_btts_no
+
+    # HERO CARD CON ESCUDOS OFICIALES
+    renderizar_hero_card_deporte(
+        eq_l, eq_v, logo_eq_l, fb_eq_l, logo_eq_v, fb_eq_v,
+        liga_sel, f"{lam_loc:.2f}  —  {lam_vis:.2f}",
+        f"Proyección de Goles Esperados (xG) • Total: {lam_loc+lam_vis:.2f} goles",
+        prob_1, prob_x, prob_2, pct_baja_l, pct_baja_v
+    )
+
+    TRADUCCION_COLS_FUTBOL = {
+        "Date": "Fecha", "Tournament": "Torneo", "HomeTeam": "Equipo Local", "AwayTeam": "Equipo Visita",
+        "FTHG": "Goles Local (A Favor)", "FTAG": "Goles Visita (En Contra)",
+        "HS": "Tiros Totales Local", "HST": "Tiros al Arco Local", "HC": "Córners Local",
+        "HY": "Amarillas Local", "HR": "Rojas Local",
+        "AS": "Tiros Totales Visita", "AST": "Tiros al Arco Visita", "AC": "Córners Visita",
+        "AY": "Amarillas Visita", "AR": "Rojas Visita"
+    }
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA: Partidos reales, Tiros, Córners y Tarjetas ({eq_l} vs {eq_v})", expanded=False):
+        if tiene_tiros_csv and tiene_tarjetas_csv:
+            st.success("✅ Telemetría Completa Opta / Football-Data: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
+        else:
+            st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
+
+        cols_l = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
+        st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL:**")
+        st.dataframe(p_l[cols_l].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
+
+        trad_vis = dict(TRADUCCION_COLS_FUTBOL)
+        trad_vis["FTHG"] = "Goles Local (En Contra)"
+        trad_vis["FTAG"] = "Goles Visita (A Favor)"
+        cols_v = [c for c in ['Date', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
+        st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE:**")
+        st.dataframe(p_v[cols_v].rename(columns=trad_vis), use_container_width=True, hide_index=True)
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟠 2. Cuotas en Betano (Goles & 1X2)")
@@ -853,17 +1080,17 @@ if deporte_activo.startswith("⚽"):
     p_ov_pue = float(1.0 - norm.cdf(linea_puerta, loc=lam_pue, scale=2.75))
     lam_cor = cor_l + cor_v
     p_ov_cor = float(1.0 - norm.cdf(linea_corners, loc=lam_cor, scale=3.35))
-
     p_ov_tarj = float(1.0 - sum(poisson.pmf(k, max(tarj_tot_esp, 0.5)) for k in range(int(linea_tarjetas) + 1)))
     p_un_tarj = 1.0 - p_ov_tarj
 
-    st.markdown(f"### 🏟️ {eq_l} vs. {eq_v} <span style='font-size:16px; color:#71717a;'>({liga_sel})</span>", unsafe_allow_html=True)
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("⚽ Goles Esp. (xG)", f"{lam_loc:.2f} - {lam_vis:.2f}", f"Total: {lam_loc+lam_vis:.2f}")
     k2.metric("🎯 Tiros Totales Esp.", f"{lam_rem:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
     k3.metric("🥅 Tiros al Arco Esp.", f"{lam_pue:.1f} arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
     k4.metric("⛳ Córners Esp.", f"{lam_cor:.1f} esq.", f"{cor_l:.1f} L + {cor_v:.1f} V")
     k5.metric("🟨 Tarjetas Esp.", f"{tarj_tot_esp:.1f} tarj.", f"{hy_l+hr_l:.1f} L + {ay_v+ar_v:.1f} V" if tiene_tarjetas_csv else "Sin CSV Tarj.")
+
+    CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🎯 1. Goles y 1X2", "⛳ 2. Tiros y Córners", "🟨 3. Tarjetas (Amarillas/Rojas)",
@@ -879,8 +1106,8 @@ if deporte_activo.startswith("⚽"):
             ("Ambos Equipos Anotan - SÍ", prob_btts_si, cuota_btts_si),
             ("Ambos Equipos Anotan - NO", prob_btts_no, cuota_btts_no)
         ]
-        filas = [{"Mercado": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1) > 0.05 else "❌ Pasar"} for m, p, c in m_g]
-        st.dataframe(pd.DataFrame(filas).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        filas = [{"Mercado": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1) > 0.05 else "❌ Pasar"} for m, p, c in m_g]
+        st.dataframe(pd.DataFrame(filas).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with tab2:
         m_e = [
@@ -891,8 +1118,8 @@ if deporte_activo.startswith("⚽"):
             (f"Más de {linea_corners} Córners Totales (Over)", p_ov_cor, cuota_over_cor),
             (f"Menos de {linea_corners} Córners Totales (Under)", 1.0 - p_ov_cor, 1.85)
         ]
-        filas_e = [{"Mercado Especial": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1) > 0.05 else "❌ Pasar"} for m, p, c in m_e]
-        st.dataframe(pd.DataFrame(filas_e).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        filas_e = [{"Mercado Especial": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1) > 0.05 else "❌ Pasar"} for m, p, c in m_e]
+        st.dataframe(pd.DataFrame(filas_e).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with tab3:
         if not tiene_tarjetas_csv:
@@ -903,8 +1130,8 @@ if deporte_activo.startswith("⚽"):
                 (f"🟨 Más de {linea_tarjetas} Tarjetas Totales (Over)", p_ov_tarj, cuota_over_tarj),
                 (f"🟨 Menos de {linea_tarjetas} Tarjetas Totales (Under)", p_un_tarj, cuota_under_tarj)
             ]
-            filas_t = [{"Mercado de Tarjetas": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1) > 0.05 else "❌ Pasar"} for m, p, c in m_tarj]
-            st.dataframe(pd.DataFrame(filas_t).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+            filas_t = [{"Mercado de Tarjetas": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1) > 0.05 else "❌ Pasar"} for m, p, c in m_tarj]
+            st.dataframe(pd.DataFrame(filas_t).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with tab4:
         df_mat = pd.DataFrame(mat[:6, :6]*100, index=[f"🏠 {eq_l} ({i})" for i in range(6)], columns=[f"✈️ {eq_v} ({j})" for j in range(6)])
@@ -924,7 +1151,7 @@ if deporte_activo.startswith("⚽"):
 
 
 # ==============================================================================
-# 2. MÓDULO TENIS (SUPERFICIE, ACES + DETECCIÓN AUTOMÁTICA DE FATIGA/NOTICIAS)
+# 2. MÓDULO TENIS (FOTOS OFICIALES + CANCHA DINÁMICA + ACES POR SUPERFICIE)
 # ==============================================================================
 elif deporte_activo.startswith("🎾"):
     st.sidebar.markdown("### 🎾 1. Circuito, Superficie y Tenistas")
@@ -967,8 +1194,10 @@ elif deporte_activo.startswith("🎾"):
 
     info_a = catalogo_espn_tenis[jug_a]
     info_b = catalogo_espn_tenis[jug_b]
-    rank_a, pts_rank_a = info_a["rank"], info_a["points"]
-    rank_b, pts_rank_b = info_b["rank"], info_b["points"]
+    rank_a, pts_rank_a, foto_a = info_a["rank"], info_a["points"], info_a["foto"]
+    rank_b, pts_rank_b, foto_b = info_b["rank"], info_b["points"], info_b["foto"]
+    fb_foto_a = generar_avatar_tenista_svg(jug_a, "#ff6b00")
+    fb_foto_b = generar_avatar_tenista_svg(jug_b, "#38bdf8")
 
     with st.spinner(f"Extrayendo historial oficial en vivo de ESPN para {jug_a} y {jug_b}..."):
         df_part_a = obtener_partidos_reales_espn_tenista(circuito, info_a["id"], jug_a)
@@ -979,10 +1208,16 @@ elif deporte_activo.startswith("🎾"):
 
     if "Arcilla" in superficie_elegida:
         clave_sup, nombre_sup_corto, estilo_cancha = "Clay", "Arcilla (Clay)", "tenis_clay"
+        bg_cancha_card = "linear-gradient(135deg, #431407 0%, #9a3412 50%, #c2410c 100%)"
+        borde_cancha_card = "#fb923c"
     elif "Césped" in superficie_elegida:
         clave_sup, nombre_sup_corto, estilo_cancha = "Grass", "Césped (Grass)", "tenis_grass"
+        bg_cancha_card = "linear-gradient(135deg, #052e16 0%, #15803d 50%, #166534 100%)"
+        borde_cancha_card = "#4ade80"
     else:
         clave_sup, nombre_sup_corto, estilo_cancha = "Hard", "Cancha Dura (Hard)", "tenis_hard"
+        bg_cancha_card = "linear-gradient(135deg, #0f172a 0%, #1d4ed8 50%, #0284c7 100%)"
+        borde_cancha_card = "#60a5fa"
 
     hold_a_sup = sup_a[clave_sup]["Hold"] * (1.0 - (fat_a / 200.0))
     brk_a_sup = sup_a[clave_sup]["Break"] * (1.0 - (fat_a / 200.0))
@@ -1020,16 +1255,43 @@ elif deporte_activo.startswith("🎾"):
     fav_prob = max(p_gana_a, p_gana_b) * 100.0
     fav_cuota_justa = 1.0 / max(p_gana_a, p_gana_b)
     fav_rk = rank_a if p_gana_a >= p_gana_b else rank_b
-    fav_sup_d = sup_a[clave_sup] if p_gana_a >= p_gana_b else sup_b[clave_sup]
 
-    st.markdown(f"""
-    <div class="fav-banner">
-        👑 <b>FAVORITO(A) EN {nombre_sup_corto.upper()}: {favorito_nom} (Rank Oficial #{fav_rk} | {fav_prob:.1f}% Prob. Real | Cuota Justa: {fav_cuota_justa:.2f})</b><br>
-        📌 En <b>{nombre_sup_corto}</b> presenta un <b>{fav_sup_d['WinPct']}% de efectividad</b> con <b>{fav_sup_d['Hold']}% Juegos Ganados al Saque</b> • Proyección de Aces: <b>{aces_totales_esp} Aces totales ({aces_esp_a} {jug_a} + {aces_esp_b} {jug_b})</b>
+    # TARJETA HERO DE TENIS CON FOTOS REALES Y TEXTURA DE CANCHA DINÁMICA
+    html_tenis_hero = f"""
+    <div style="background:{bg_cancha_card}; border: 2px solid {borde_cancha_card}; border-radius: 18px; padding: 24px 28px; margin-bottom: 20px; box-shadow: 0 14px 30px rgba(0,0,0,0.45); position: relative; overflow: hidden;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+            <div style="flex:1; text-align:center;">
+                <img src="{foto_a}" onerror="this.onerror=null;this.src='{fb_foto_a}';" style="width:98px; height:98px; border-radius:50%; object-fit:cover; border:3px solid #ffffff; background:#18181b; box-shadow:0 6px 16px rgba(0,0,0,0.5);"/>
+                <div style="font-size:1.3rem; font-weight:800; color:#ffffff; margin-top:8px;">{jug_a}</div>
+                <span style="background:rgba(0,0,0,0.45); color:#ffffff; padding:3px 10px; border-radius:999px; font-size:0.78rem; font-weight:700;">Rank #{rank_a} • {int(pts_rank_a)} pts</span>
+            </div>
+            <div style="flex:1.3; text-align:center;">
+                <div style="background:rgba(0,0,0,0.45); color:#ffffff; padding:4px 14px; border-radius:999px; font-size:0.78rem; font-weight:800; display:inline-block; margin-bottom:8px;">
+                    {circuito} • {nombre_sup_corto.upper()}
+                </div>
+                <div style="font-size:2.2rem; font-weight:900; color:#ffffff;">{p_gana_a*100:.1f}%  —  {p_gana_b*100:.1f}%</div>
+                <div style="color:#f4f4f5; font-size:0.86rem; font-weight:600; margin-top:4px;">
+                    👑 Favorito(a): <b>{favorito_nom}</b> (#{fav_rk}) • Cuota Justa: <b>{fav_cuota_justa:.2f}</b>
+                </div>
+                <div style="color:#e4e4e7; font-size:0.82rem; margin-top:4px;">
+                    🔥 Aces Proyectados: <b>{aces_totales_esp}</b> ({aces_esp_a} + {aces_esp_b}) • Juegos Esp.: <b>{juegos_totales_esp}</b>
+                </div>
+                <div class="prob-bar-wrap" style="margin-top:12px;">
+                    <div style="width:{p_gana_a*100:.1f}%; background:#ff6b00;"></div>
+                    <div style="width:{p_gana_b*100:.1f}%; background:#38bdf8;"></div>
+                </div>
+            </div>
+            <div style="flex:1; text-align:center;">
+                <img src="{foto_b}" onerror="this.onerror=null;this.src='{fb_foto_b}';" style="width:98px; height:98px; border-radius:50%; object-fit:cover; border:3px solid #ffffff; background:#18181b; box-shadow:0 6px 16px rgba(0,0,0,0.5);"/>
+                <div style="font-size:1.3rem; font-weight:800; color:#ffffff; margin-top:8px;">{jug_b}</div>
+                <span style="background:rgba(0,0,0,0.45); color:#ffffff; padding:3px 10px; border-radius:999px; font-size:0.78rem; font-weight:700;">Rank #{rank_b} • {int(pts_rank_b)} pts</span>
+            </div>
+        </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(html_tenis_hero, unsafe_allow_html=True)
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA TENIS: Superficies, Aces, Noticias y Últimos Partidos ({jug_a} vs {jug_b})", expanded=True):
+    with st.expander(f"📋 TABLA DE AUDITORÍA TENIS: Superficies, Aces, Noticias y Últimos Partidos ({jug_a} vs {jug_b})", expanded=False):
         if noticias_t:
             st.markdown("**🗞️ Noticias Recientes en ESPN Tenis:**")
             for f_nt, hl_t, desc_t in noticias_t:
@@ -1087,13 +1349,13 @@ elif deporte_activo.startswith("🎾"):
     p_over_aces = float(1.0 - norm.cdf(linea_aces_ten, loc=aces_totales_esp, scale=sigma_aces))
     p_under_aces = 1.0 - p_over_aces
 
-    st.markdown(f"### 🎾 {jug_a} (#{rank_a}) vs. {jug_b} (#{rank_b}) <span style='font-size:16px; color:#71717a;'>({circuito} • {nombre_sup_corto})</span>", unsafe_allow_html=True)
     tk1, tk2, tk3, tk4 = st.columns(4)
     tk1.metric("🏆 Prob. Victoria", f"{p_gana_a*100:.1f}% vs {p_gana_b*100:.1f}%", f"Favorito(a): {favorito_nom}")
     tk2.metric(f"🎾 Saque Efectivo ({nombre_sup_corto})", f"{hold_eff_a:.1f}% vs {hold_eff_b:.1f}%", f"1er Set {jug_a}: {p_set_a*100:.1f}%")
     tk3.metric("📏 Total Juegos Esperados", f"{juegos_totales_esp} juegos", f"Sets Esp.: {sets_esp:.2f}")
     tk4.metric(f"🔥 Aces Esperados ({nombre_sup_corto})", f"{aces_totales_esp} aces", f"{aces_esp_a} L + {aces_esp_b} V")
 
+    CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
     tab1, tab2 = st.tabs(["🎯 1. Mercados Tenis y Aces (Betano)", "🔴 2. Radar En Vivo"])
     with tab1:
         m_t = [
@@ -1105,17 +1367,17 @@ elif deporte_activo.startswith("🎾"):
             (f"Total Aces ({nombre_sup_corto}): Más de {linea_aces_ten} Aces (Over)", p_over_aces, c_ov_aces),
             (f"Total Aces ({nombre_sup_corto}): Menos de {linea_aces_ten} Aces (Under)", p_under_aces, c_un_aces)
         ]
-        st.dataframe(pd.DataFrame([{"Mercado": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_t]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([{"Mercado": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_t]).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
     with tab2:
         mostrar_cancha_calor(jug_a, jug_b, hold_eff_a, hold_eff_b, 1.1, 1.0, estilo_cancha)
 
 
 # ==============================================================================
-# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - ESPAÑOL + SOG + BAJAS AUTOMÁTICAS)
+# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - ESCUDOS OFICIALES + SOG + BAJAS AUTO)
 # ==============================================================================
 elif deporte_activo.startswith("🏒"):
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
-    mapa_nhl = obtener_catalogo_equipos_nhl()
+    mapa_nhl, mapa_logos_nhl = obtener_catalogo_equipos_nhl()
     if not mapa_nhl:
         st.error("No se pudo conectar con la API Oficial de la NHL (api-web.nhle.com).")
         st.stop()
@@ -1124,6 +1386,9 @@ elif deporte_activo.startswith("🏒"):
     col_nhl1, col_nhl2 = st.sidebar.columns(2)
     nh_l = col_nhl1.selectbox("🏠 Local (Home)", lista_nhl, index=0)
     nh_v = col_nhl2.selectbox("✈️ Visita (Road)", lista_nhl, index=1 if len(lista_nhl) > 1 else 0)
+
+    logo_nh_l, fb_nh_l = buscar_logo_equipo(nh_l, mapa_logos_nhl, "#ff6b00")
+    logo_nh_v, fb_nh_v = buscar_logo_equipo(nh_v, mapa_logos_nhl, "#38bdf8")
 
     usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
     mult_bajas_nl, mult_bajas_nv, pct_baja_nl, pct_baja_nv = renderizar_panel_bajas_y_factor("hockey", "nhl", nh_l, nh_v, f"nhl_{nh_l}_{nh_v}")
@@ -1162,19 +1427,6 @@ elif deporte_activo.startswith("🏒"):
     sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles y Tiros al Arco (SOG) Reales ({nh_l} Local vs {nh_v} Visita)", expanded=True):
-        st.success("✅ Datos extraídos en vivo desde los Boxscores Oficiales de la NHL filtrados por Localía (`HOME`) y Gira (`AWAY`).")
-        if pct_baja_nl > 0 or pct_baja_nv > 0:
-            st.markdown(f"<div class='injury-alert'>🏥 <b>Factor de Incidencia NHL Aplicado:</b> {nh_l} (-{pct_baja_nl}%) | {nh_v} (-{pct_baja_nv}%).</div>", unsafe_allow_html=True)
-
-        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. Tiros al Arco: {sog_f_l:.1f} a favor / {sog_c_l:.1f} en contra):**")
-        if not df_nhl_l.empty:
-            st.dataframe(df_nhl_l, use_container_width=True, hide_index=True)
-
-        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. Tiros al Arco: {sog_f_v:.1f} a favor / {sog_c_v:.1f} en contra):**")
-        if not df_nhl_v.empty:
-            st.dataframe(df_nhl_v, use_container_width=True, hide_index=True)
-
     lam_nhl_l = max((gf_nhl_l * gc_nhl_v) / media_nhl_global, 0.50)
     lam_nhl_v = max((gf_nhl_v * gc_nhl_l) / media_nhl_global, 0.50)
     tot_nhl = lam_nhl_l + lam_nhl_v
@@ -1187,6 +1439,24 @@ elif deporte_activo.startswith("🏒"):
     p_emp = float(np.sum(np.diag(mat_n)))
     p_ml_l = p_reg_l + (p_emp * (lam_nhl_l / tot_nhl))
     p_ml_v = 1.0 - p_ml_l
+
+    renderizar_hero_card_deporte(
+        nh_l, nh_v, logo_nh_l, fb_nh_l, logo_nh_v, fb_nh_v,
+        "🏒 NHL HOCKEY SOBRE HIELO • LOCAL VS. VISITA",
+        f"{lam_nhl_l:.2f}  —  {lam_nhl_v:.2f}",
+        f"Goles Esp. (60m): {tot_nhl:.2f} • Shots on Goal (SOG) Esp.: {sog_totales_esp}",
+        p_ml_l, None, p_ml_v, pct_baja_nl, pct_baja_nv
+    )
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles y Tiros al Arco (SOG) Reales ({nh_l} Local vs {nh_v} Visita)", expanded=False):
+        st.success("✅ Datos extraídos en vivo desde los Boxscores Oficiales de la NHL filtrados por Localía (`HOME`) y Gira (`AWAY`).")
+        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. Tiros al Arco: {sog_f_l:.1f} a favor / {sog_c_l:.1f} en contra):**")
+        if not df_nhl_l.empty:
+            st.dataframe(df_nhl_l, use_container_width=True, hide_index=True)
+
+        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. Tiros al Arco: {sog_f_v:.1f} a favor / {sog_c_v:.1f} en contra):**")
+        if not df_nhl_v.empty:
+            st.dataframe(df_nhl_v, use_container_width=True, hide_index=True)
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟠 2. Cuotas Betano NHL (Goles & SOG)")
@@ -1207,13 +1477,13 @@ elif deporte_activo.startswith("🏒"):
     p_ov_sog_tot = float(1.0 - norm.cdf(linea_sog_tot, loc=sog_totales_esp, scale=6.8))
     p_ov_sog_l = float(1.0 - norm.cdf(linea_sog_loc, loc=sog_esp_loc, scale=4.8))
 
-    st.markdown(f"### 🧊 {nh_l} vs. {nh_v} <span style='font-size:16px; color:#71717a;'>(NHL • Goles & Tiros al Arco)</span>", unsafe_allow_html=True)
     nk1, nk2, nk3, nk4 = st.columns(4)
     nk1.metric("🏒 Goles Esp. (60m)", f"{lam_nhl_l:.2f} - {lam_nhl_v:.2f}", f"Total: {tot_nhl:.2f} goles")
     nk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Empate 60': {p_emp*100:.1f}%")
     nk3.metric("🎯 Tiros al Arco Esp.", f"{sog_totales_esp} tiros", f"{sog_esp_loc} L + {sog_esp_vis} V")
     nk4.metric("📈 Prob. Over Goles", f"{p_ov_nhl*100:.1f}% Over {linea_nhl}", f"{(1-p_ov_nhl)*100:.1f}% Under {linea_nhl}")
 
+    CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
     ntab1, ntab2, ntab3 = st.tabs(["🏆 1. Mercados Goles & ML", "🎯 2. Tiros al Arco (SOG)", "🔴 3. Radar En Vivo"])
     with ntab1:
         m_nhl = [
@@ -1222,7 +1492,7 @@ elif deporte_activo.startswith("🏒"):
             (f"Total: Más de {linea_nhl} Goles (Over)", p_ov_nhl, c_ov_nhl),
             (f"Total: Menos de {linea_nhl} Goles (Under)", 1.0 - p_ov_nhl, c_un_nhl)
         ]
-        st.dataframe(pd.DataFrame([{"Mercado NHL": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_nhl]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([{"Mercado NHL": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_nhl]).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with ntab2:
         m_sog = [
@@ -1231,18 +1501,18 @@ elif deporte_activo.startswith("🏒"):
             (f"🎯 {nh_l}: Más de {linea_sog_loc} Tiros al Arco (Over)", p_ov_sog_l, c_ov_sog_l),
             (f"🎯 {nh_l}: Menos de {linea_sog_loc} Tiros al Arco (Under)", 1.0 - p_ov_sog_l, 1.85)
         ]
-        st.dataframe(pd.DataFrame([{"Mercado Tiros al Arco (SOG)": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_sog]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([{"Mercado Tiros al Arco (SOG)": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_sog]).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with ntab3:
         mostrar_cancha_calor(nh_l, nh_v, p_ml_l*100, p_ml_v*100, 1.1, 1.0, "nhl")
 
 
 # ==============================================================================
-# 4. MÓDULO FÚTBOL AMERICANO (NFL - LOCAL/VISITA + BAYESIANO + BAJAS AUTO)
+# 4. MÓDULO FÚTBOL AMERICANO (NFL - ESCUDOS OFICIALES + LOCAL/VISITA + BAJAS)
 # ==============================================================================
 elif deporte_activo.startswith("🏈"):
     st.sidebar.markdown("### 🏈 1. Equipos NFL")
-    mapa_nfl = obtener_catalogo_equipos_espn("football", "nfl")
+    mapa_nfl, mapa_logos_nfl = obtener_catalogo_equipos_y_logos_espn("football", "nfl")
     if not mapa_nfl:
         st.error("No se pudo conectar con la API Oficial de ESPN para NFL.")
         st.stop()
@@ -1251,6 +1521,9 @@ elif deporte_activo.startswith("🏈"):
     c_nf1, c_nf2 = st.sidebar.columns(2)
     nf_l = c_nf1.selectbox("🏠 Local (Home)", lista_nfl, index=0)
     nf_v = c_nf2.selectbox("✈️ Visita (Road)", lista_nfl, index=1 if len(lista_nfl) > 1 else 0)
+
+    logo_nf_l, fb_nf_l = buscar_logo_equipo(nf_l, mapa_logos_nfl, "#ff6b00")
+    logo_nf_v, fb_nf_v = buscar_logo_equipo(nf_v, mapa_logos_nfl, "#38bdf8")
 
     usar_bayes_nfl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NFL (< 6 PJ)", value=True)
     mult_bajas_nfl_l, mult_bajas_nfl_v, pct_b_nfl_l, pct_b_nfl_v = renderizar_panel_bajas_y_factor("football", "nfl", nf_l, nf_v, f"nfl_{nf_l}_{nf_v}")
@@ -1279,23 +1552,28 @@ elif deporte_activo.startswith("🏈"):
     pf_l = pf_l * mult_bajas_nfl_l
     pf_v = pf_v * mult_bajas_nfl_v
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA NFL: Últimos partidos reales de {nf_l} como LOCAL y {nf_v} como VISITANTE", expanded=True):
-        st.success("✅ Datos extraídos en vivo desde ESPN Schedule filtrando estrictamente por Localía (`HOME`) y Gira (`AWAY`).")
-        if pct_b_nfl_l > 0 or pct_b_nfl_v > 0:
-            st.markdown(f"<div class='injury-alert'>🏥 <b>Factor de Incidencia NFL Aplicado:</b> {nf_l} (-{pct_b_nfl_l}%) | {nf_v} (-{pct_b_nfl_v}%).</div>", unsafe_allow_html=True)
+    proy_l = (pf_l + pa_v) / 2.0
+    proy_v = (pf_v + pa_l) / 2.0
+    tot_nfl = proy_l + proy_v
+    p_ml_l = float(1.0 - norm.cdf(0.0, loc=proy_l - proy_v, scale=13.2))
+    p_ml_v = 1.0 - p_ml_l
 
+    renderizar_hero_card_deporte(
+        nf_l, nf_v, logo_nf_l, fb_nf_l, logo_nf_v, fb_nf_v,
+        "🏈 NFL FÚTBOL AMERICANO • LOCAL VS. VISITA",
+        f"{proy_l:.1f}  —  {proy_v:.1f}",
+        f"Total Esperado: {tot_nfl:.1f} puntos • Spread Proyectado: {proy_l - proy_v:+.1f}",
+        p_ml_l, None, p_ml_v, pct_b_nfl_l, pct_b_nfl_v
+    )
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA NFL: Últimos partidos reales de {nf_l} como LOCAL y {nf_v} como VISITANTE", expanded=False):
+        st.success("✅ Datos extraídos en vivo desde ESPN Schedule filtrando estrictamente por Localía (`HOME`) y Gira (`AWAY`).")
         st.markdown(f"**🏠 Últimos {len(df_nfl_l)} partidos de {nf_l} jugando en CASA (Local):**")
         if not df_nfl_l.empty:
             st.dataframe(df_nfl_l.rename(columns={"Puntos/Carreras a Favor": "Puntos Anotados", "Puntos/Carreras en Contra": "Puntos Recibidos", "Total Marcador": "Total Puntos"}), use_container_width=True, hide_index=True)
         st.markdown(f"**✈️ Últimos {len(df_nfl_v)} partidos de {nf_v} jugando de GIRA (Visita):**")
         if not df_nfl_v.empty:
             st.dataframe(df_nfl_v.rename(columns={"Puntos/Carreras a Favor": "Puntos Anotados", "Puntos/Carreras en Contra": "Puntos Recibidos", "Total Marcador": "Total Puntos"}), use_container_width=True, hide_index=True)
-
-    proy_l = (pf_l + pa_v) / 2.0
-    proy_v = (pf_v + pa_l) / 2.0
-    tot_nfl = proy_l + proy_v
-    p_ml_l = float(1.0 - norm.cdf(0.0, loc=proy_l - proy_v, scale=13.2))
-    p_ml_v = 1.0 - p_ml_l
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟠 2. Cuotas Betano NFL")
@@ -1307,12 +1585,12 @@ elif deporte_activo.startswith("🏈"):
 
     p_ov_nfl = float(1.0 - norm.cdf(linea_nfl, loc=tot_nfl, scale=14.2))
 
-    st.markdown(f"### 🏈 {nf_l} vs. {nf_v} <span style='font-size:16px; color:#71717a;'>(NFL • Auditoría Local vs. Visita)</span>", unsafe_allow_html=True)
     fk1, fk2, fk3 = st.columns(3)
     fk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total Esperado: {tot_nfl:.1f} pts")
     fk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Diferencial Esp.: {proy_l - proy_v:+.1f}")
     fk3.metric("📈 Prob. Over / Under", f"{p_ov_nfl*100:.1f}% Over {linea_nfl}", f"{(1-p_ov_nfl)*100:.1f}% Under {linea_nfl}")
 
+    CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
     ftab1, ftab2 = st.tabs(["🎯 1. Mercados NFL (Betano)", "🔴 2. Radar En Vivo (In-Play)"])
     with ftab1:
         m_nfl = [
@@ -1321,13 +1599,13 @@ elif deporte_activo.startswith("🏈"):
             (f"Total: Más de {linea_nfl} Puntos (Over)", p_ov_nfl, c_ov_nfl),
             (f"Total: Menos de {linea_nfl} Puntos (Under)", 1.0 - p_ov_nfl, c_un_nfl)
         ]
-        st.dataframe(pd.DataFrame([{"Mercado NFL": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_nfl]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([{"Mercado NFL": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_nfl]).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
     with ftab2:
         mostrar_cancha_calor(nf_l, nf_v, p_ml_l*100, p_ml_v*100, 1.1, 1.0, "nfl")
 
 
 # ==============================================================================
-# 5. MÓDULOS NBA (🏀) Y MLB (⚾) CON INTELIGENCIA DE BAJAS AUTO-CALCULADA
+# 5. MÓDULOS NBA (🏀) Y MLB (⚾) CON ESCUDOS OFICIALES Y BAJAS AUTO-CALCULADAS
 # ==============================================================================
 else:
     if deporte_activo.startswith("🏀"):
@@ -1336,7 +1614,7 @@ else:
         sport_p, league_c, nom_dep, sigma_m, cancha_k = "baseball", "mlb", "MLB Béisbol", 3.2, "mlb"
 
     st.sidebar.markdown(f"### 🏆 1. Equipos {nom_dep}")
-    mapa_equipos_espn = obtener_catalogo_equipos_espn(sport_p, league_c)
+    mapa_equipos_espn, mapa_logos_usa = obtener_catalogo_equipos_y_logos_espn(sport_p, league_c)
     if not mapa_equipos_espn:
         st.error(f"No se pudo conectar con el servidor en vivo de ESPN para {nom_dep}.")
         st.stop()
@@ -1345,22 +1623,13 @@ else:
     u_l = st.sidebar.selectbox("🏠 Local (Home)", lista_eq, index=0)
     u_v = st.sidebar.selectbox("✈️ Visita (Road)", lista_eq, index=1 if len(lista_eq) > 1 else 0)
 
+    logo_u_l, fb_u_l = buscar_logo_equipo(u_l, mapa_logos_usa, "#ff6b00")
+    logo_u_v, fb_u_v = buscar_logo_equipo(u_v, mapa_logos_usa, "#38bdf8")
+
     mult_bajas_ul, mult_bajas_uv, pct_b_ul, pct_b_uv = renderizar_panel_bajas_y_factor(sport_p, league_c, u_l, u_v, f"{league_c}_{u_l}_{u_v}")
 
     df_real_l = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_l], u_l, n_partidos=8, condicion_filtro="ALL")
     df_real_v = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_v], u_v, n_partidos=8, condicion_filtro="ALL")
-
-    with st.expander(f"📋 TABLA DE AUDITORÍA {nom_dep}: Últimos partidos oficiales extraídos en vivo de ESPN ({u_l} vs {u_v})", expanded=True):
-        st.success(f"✅ Datos de {nom_dep} extraídos 100% en tiempo real desde la API Oficial de ESPN (`site.api.espn.com`).")
-        if pct_b_ul > 0 or pct_b_uv > 0:
-            st.markdown(f"<div class='injury-alert'>🏥 <b>Factor de Incidencia {nom_dep} Aplicado:</b> {u_l} (-{pct_b_ul}%) | {u_v} (-{pct_b_uv}%).</div>", unsafe_allow_html=True)
-
-        st.markdown(f"**🏠 Últimos {len(df_real_l)} partidos finalizados de {u_l}:**")
-        if not df_real_l.empty:
-            st.dataframe(df_real_l, use_container_width=True, hide_index=True)
-        st.markdown(f"**✈️ Últimos {len(df_real_v)} partidos finalizados de {u_v}:**")
-        if not df_real_v.empty:
-            st.dataframe(df_real_v, use_container_width=True, hide_index=True)
 
     def_pts = 112.0 if sport_p == "basketball" else 4.5
     pf_l = (float(df_real_l["Puntos/Carreras a Favor"].mean()) if not df_real_l.empty else def_pts) * mult_bajas_ul
@@ -1374,6 +1643,23 @@ else:
     p_ml_l = float(1.0 - norm.cdf(0.0, loc=proy_l - proy_v, scale=sigma_m))
     p_ml_v = 1.0 - p_ml_l
 
+    renderizar_hero_card_deporte(
+        u_l, u_v, logo_u_l, fb_u_l, logo_u_v, fb_u_v,
+        nom_dep.upper(),
+        f"{proy_l:.1f}  —  {proy_v:.1f}",
+        f"Total Esperado: {tot_esp:.1f} puntos/carreras",
+        p_ml_l, None, p_ml_v, pct_b_ul, pct_b_uv
+    )
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA {nom_dep}: Últimos partidos oficiales extraídos en vivo de ESPN ({u_l} vs {u_v})", expanded=False):
+        st.success(f"✅ Datos de {nom_dep} extraídos 100% en tiempo real desde la API Oficial de ESPN (`site.api.espn.com`).")
+        st.markdown(f"**🏠 Últimos {len(df_real_l)} partidos finalizados de {u_l}:**")
+        if not df_real_l.empty:
+            st.dataframe(df_real_l, use_container_width=True, hide_index=True)
+        st.markdown(f"**✈️ Últimos {len(df_real_v)} partidos finalizados de {u_v}:**")
+        if not df_real_v.empty:
+            st.dataframe(df_real_v, use_container_width=True, hide_index=True)
+
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"### 🟠 2. Cuotas Betano {nom_dep}")
     c_ul = st.sidebar.number_input(f"Gana {u_l}", 1.01, 25.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
@@ -1384,12 +1670,12 @@ else:
 
     p_ov_u = float(1.0 - norm.cdf(linea_u, loc=tot_esp, scale=sigma_m * 1.15))
 
-    st.markdown(f"### 🏟️ {u_l} vs. {u_v} <span style='font-size:16px; color:#71717a;'>({nom_dep})</span>", unsafe_allow_html=True)
     uk1, uk2, uk3 = st.columns(3)
     uk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total Esperado: {tot_esp:.1f}")
     uk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%")
     uk3.metric("📈 Prob. Over Línea", f"{p_ov_u*100:.1f}%", f"Línea: {linea_u}")
 
+    CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
     utab1, utab2 = st.tabs(["🎯 1. Mercados Betano", "🔴 2. Radar En Vivo (In-Play)"])
     with utab1:
         m_u = [
@@ -1398,6 +1684,6 @@ else:
             (f"Total: Más de {linea_u} (Over)", p_ov_u, c_ov_u),
             (f"Total: Menos de {linea_u} (Under)", 1.0 - p_ov_u, c_un_u)
         ]
-        st.dataframe(pd.DataFrame([{"Mercado": m, "Prob. Real (%)": f"{p*100:.1f}%", "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_u]).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([{"Mercado": m, "Prob. Real": round(p*100, 1), "Cuota Justa": f"{1/p:.2f}", "Cuota Betano": f"{c:.2f}", "Edge (%)": f"{(p*c-1)*100:+.2f}%", "Veredicto": "✅ APOSTAR (+EV)" if (p*c-1)>0.05 else "❌ Pasar"} for m, p, c in m_u]).style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
     with utab2:
         mostrar_cancha_calor(u_l, u_v, p_ml_l*100, p_ml_v*100, 1.1, 1.0, cancha_k)
