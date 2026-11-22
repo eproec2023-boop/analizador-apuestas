@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 15.1 | Classic Rivalry & Referee Quant Suite",
+    page_title="Pro Bet Analyzer 15.2 | Standings & Blowout Decay Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -231,25 +231,113 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 15.1 <span style="color:#ff8c00;">| CLASSIC RIVALRY & REFEREE QUANT</span></h1>
-<p>Detección Automática de Clásicos y Derbis • Rigor Arbitral Real • Kelly Fraccionado • Dixon-Coles • Bitácora Combinadas 3X</p>
+<h1>🏆 PRO BET ANALYZER 15.2 <span style="color:#ff8c00;">| STANDINGS & BLOWOUT DECAY SUITE</span></h1>
+<p>Reconstrucción de Tabla de Posiciones • Filtro Anti-Goleada en Córners (1T vs FT) • Clásicos Auto • Kelly & Bitácora 3X</p>
 </div>
 """, unsafe_allow_html=True)
 
 HEADERS_HTTP = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 # ==============================================================================
+# RECONSTRUCTOR DE TABLA DE POSICIONES Y DETECTOR DE RIESGO DE GOLEADA (BLOWOUT)
+# ==============================================================================
+def calcular_tabla_posiciones_csv(df_csv):
+    """
+    Reconstruye la tabla de posiciones oficial del torneo a partir de los resultados
+    del CSV (3 pts victoria, 1 pt empate) y devuelve el DataFrame ordenado y el mapa de puestos.
+    """
+    if df_csv.empty:
+        return pd.DataFrame(), {}
+    equipos = sorted(list(set(df_csv['HomeTeam'].unique()).union(set(df_csv['AwayTeam'].unique()))))
+    stats = {eq: {"PJ": 0, "G": 0, "E": 0, "P": 0, "GF": 0, "GC": 0, "Pts": 0} for eq in equipos}
+
+    for _, r in df_csv.iterrows():
+        h, a = r['HomeTeam'], r['AwayTeam']
+        hg, ag = int(r['FTHG']), int(r['FTAG'])
+        stats[h]["PJ"] += 1
+        stats[a]["PJ"] += 1
+        stats[h]["GF"] += hg
+        stats[h]["GC"] += ag
+        stats[a]["GF"] += ag
+        stats[a]["GC"] += hg
+        if hg > ag:
+            stats[h]["G"] += 1
+            stats[h]["Pts"] += 3
+            stats[a]["P"] += 1
+        elif hg < ag:
+            stats[a]["G"] += 1
+            stats[a]["Pts"] += 3
+            stats[h]["P"] += 1
+        else:
+            stats[h]["E"] += 1
+            stats[a]["E"] += 1
+            stats[h]["Pts"] += 1
+            stats[a]["Pts"] += 1
+
+    filas_tabla = []
+    for eq, d in stats.items():
+        dg = d["GF"] - d["GC"]
+        ppp = round(d["Pts"] / max(d["PJ"], 1), 2)
+        filas_tabla.append({
+            "Equipo": eq, "PJ": d["PJ"], "G": d["G"], "E": d["E"], "P": d["P"],
+            "GF": d["GF"], "GC": d["GC"], "DG": dg, "Pts": d["Pts"], "PPP": ppp
+        })
+
+    df_pos = pd.DataFrame(filas_tabla).sort_values(by=["Pts", "PPP", "DG", "GF"], ascending=False).reset_index(drop=True)
+    df_pos.insert(0, "Pos", df_pos.index + 1)
+
+    mapa_puestos = {}
+    for _, row in df_pos.iterrows():
+        mapa_puestos[row["Equipo"]] = {
+            "pos": int(row["Pos"]),
+            "pts": int(row["Pts"]),
+            "pj": int(row["PJ"]),
+            "dg": int(row["DG"]),
+            "ppp": float(row["PPP"])
+        }
+    return df_pos, mapa_puestos
+
+def evaluar_riesgo_goleada_corners(mat, pos_loc, pos_vis, total_equipos):
+    """
+    Calcula la probabilidad exacta de goleada (>= 3 goles de diferencia) desde la matriz
+    y la cruza con la brecha de puestos en la tabla para activar el Blowout Decay en córners.
+    """
+    prob_goleada_loc = 0.0
+    prob_goleada_vis = 0.0
+    for i in range(mat.shape[0]):
+        for j in range(mat.shape[1]):
+            if (i - j) >= 3:
+                prob_goleada_loc += float(mat[i, j])
+            elif (j - i) >= 3:
+                prob_goleada_vis += float(mat[i, j])
+
+    prob_goleada_max = max(prob_goleada_loc, prob_goleada_vis)
+    brecha_puestos = abs(pos_loc - pos_vis)
+    umbral_brecha = max(int(total_equipos * 0.45), 6)
+
+    # Activar protocolo si hay brecha fuerte en tabla y probabilidad de goleada >= 18%
+    if (brecha_puestos >= umbral_brecha and prob_goleada_max >= 0.16) or (prob_goleada_max >= 0.24):
+        factor_decay = 0.86  # -14% en córners de partido completo por enfriamiento del 2T
+        quien_golea = "Local" if prob_goleada_loc >= prob_goleada_vis else "Visita"
+        msg = (
+            f"⚠️ **Alerta Anti-Goleada Activa (Brecha #{pos_loc} vs #{pos_vis} | Prob. Goleada ≥3 goles: {prob_goleada_max*100:.1f}%):** "
+            f"Si {quien_golea} liquida el partido temprano (ej. 3-0 al min 60), el ritmo de córners en el 2T cae drásticamente. "
+            f"Se aplicó un ajuste de **-14%** a los córners totales. **Sugerencia táctica:** Prioriza **Córners 1er Tiempo (1T)** o *Cash Out* al descanso."
+        )
+        return True, factor_decay, prob_goleada_max, msg
+
+    return False, 1.00, prob_goleada_max, ""
+
+# ==============================================================================
 # DETECTOR AUTOMÁTICO DE CLÁSICOS, DERBIS Y RIVALIDADES DE ALTA FRICCIÓN
 # ==============================================================================
 CLASICOS_MUNDIALES = [
-    # España
     ("real madrid", "barcelona", "El Clásico de España (+18% Fricción)"),
     ("real madrid", "ath madrid", "Derbi Madrileño (+18% Fricción)"),
     ("barcelona", "espanol", "Derbi Barcelonés (+18% Fricción)"),
     ("betis", "sevilla", "El Gran Derbi Sevillano (+20% Fricción)"),
     ("ath bilbao", "sociedad", "Derbi Vasco (+18% Fricción)"),
     ("valencia", "villarreal", "Derbi de la Comunitat (+16% Fricción)"),
-    # Inglaterra
     ("arsenal", "tottenham", "North London Derby (+18% Fricción)"),
     ("liverpool", "man united", "Clásico de Inglaterra (+18% Fricción)"),
     ("liverpool", "everton", "Merseyside Derby (+18% Fricción)"),
@@ -258,23 +346,19 @@ CLASICOS_MUNDIALES = [
     ("chelsea", "tottenham", "Derbi de Londres (+18% Fricción)"),
     ("newcastle", "sunderland", "Tyne-Wear Derby (+20% Fricción)"),
     ("aston villa", "wolves", "West Midlands Derby (+16% Fricción)"),
-    # Italia
     ("inter", "milan", "Derby della Madonnina (+18% Fricción)"),
     ("juventus", "inter", "Derby d'Italia (+18% Fricción)"),
     ("juventus", "torino", "Derby della Mole (+18% Fricción)"),
     ("roma", "lazio", "Derby della Capitale (+20% Fricción)"),
     ("napoli", "juventus", "Rivalidad Norte-Sur Italia (+16% Fricción)"),
     ("genoa", "sampdoria", "Derby della Lanterna (+18% Fricción)"),
-    # Alemania
     ("bayern", "dortmund", "Der Klassiker (+16% Fricción)"),
     ("dortmund", "schalke", "Revierderby (+20% Fricción)"),
     ("hamburg", "st pauli", "Derbi de Hamburgo (+20% Fricción)"),
     ("koln", "m'gladbach", "Derbi del Rin (+18% Fricción)"),
-    # Francia
     ("paris sg", "marseille", "Le Classique Francia (+20% Fricción)"),
     ("lyon", "st etienne", "Derby Rhône-Alpes (+20% Fricción)"),
     ("nice", "monaco", "Derby de la Côte d'Azur (+16% Fricción)"),
-    # Países Bajos, Portugal, Escocia, Bélgica, Turquía
     ("ajax", "feyenoord", "De Klassieker Holanda (+20% Fricción)"),
     ("ajax", "psv", "De Topper Holanda (+16% Fricción)"),
     ("benfica", "porto", "O Clássico Portugal (+20% Fricción)"),
@@ -286,7 +370,6 @@ CLASICOS_MUNDIALES = [
     ("galatasaray", "fenerbahce", "Clásico Intercontinental Estambul (+22% Fricción)"),
     ("galatasaray", "besiktas", "Derbi de Estambul (+20% Fricción)"),
     ("fenerbahce", "besiktas", "Derbi de Estambul (+20% Fricción)"),
-    # América (Argentina, Brasil, México, MLS)
     ("boca", "river", "Superclásico Argentino (+22% Fricción)"),
     ("racing", "independiente", "Clásico de Avellaneda (+20% Fricción)"),
     ("san lorenzo", "huracan", "Clásico Porteño (+18% Fricción)"),
@@ -303,7 +386,6 @@ CLASICOS_MUNDIALES = [
     ("tigres", "monterrey", "Clásico Regiomontano (+20% Fricción)"),
     ("lafc", "la galaxy", "El Tráfico MLS (+18% Fricción)"),
     ("new york city", "new york red bulls", "Hudson River Derby (+18% Fricción)"),
-    # Selecciones UEFA
     ("england", "germany", "Clásico Europeo Selecciones (+16% Fricción)"),
     ("france", "italy", "Derbi Transalpino (+16% Fricción)"),
     ("spain", "portugal", "Derbi Ibérico (+16% Fricción)"),
@@ -315,11 +397,6 @@ CLASICOS_MUNDIALES = [
 ]
 
 def evaluar_clasico_y_friccion_h2h(eq_loc, eq_vis, df_csv, media_tarj_liga=4.0):
-    """
-    Detecta automáticamente si el encuentro es un Clásico/Derbi histórico
-    o si los enfrentamientos previos en el CSV reflejan una rivalidad tarjetera.
-    Devuelve: (es_clasico_bool, factor_friccion, etiqueta_motivo)
-    """
     l_low = eq_loc.lower().strip()
     v_low = eq_vis.lower().strip()
 
@@ -328,7 +405,6 @@ def evaluar_clasico_y_friccion_h2h(eq_loc, eq_vis, df_csv, media_tarj_liga=4.0):
             factor = 1.22 if "+22%" in desc else (1.20 if "+20%" in desc else (1.16 if "+16%" in desc else 1.18))
             return True, factor, f"🔥 {desc}"
 
-    # Segunda capa: revisar historial directo H2H en el CSV de la liga
     if not df_csv.empty and 'HY' in df_csv.columns and 'AY' in df_csv.columns:
         h2h = df_csv[
             ((df_csv['HomeTeam'] == eq_loc) & (df_csv['AwayTeam'] == eq_vis)) |
@@ -395,7 +471,7 @@ def buscar_logo_equipo(nombre_club, mapa_logos, color_fallback="#ff6b00"):
             return url_logo, fallback
     return fallback, fallback
 
-def renderizar_hero_card_deporte(eq_l, eq_v, logo_l, fb_l, logo_v, fb_v, liga_txt, marcador_txt, sub_txt, p_l, p_x, p_v, baja_l=0, baja_v=0, badge_extra=""):
+def renderizar_hero_card_deporte(eq_l, eq_v, logo_l, fb_l, logo_v, fb_v, liga_txt, marcador_txt, sub_txt, p_l, p_x, p_v, baja_l=0, baja_v=0, badge_extra="", sub_loc="🏠 LOCAL", sub_vis="✈️ VISITA"):
     baja_l_html = f'<span style="background:rgba(239,68,68,0.25);color:#fecaca;padding:2px 8px;border-radius:6px;font-size:0.70rem;margin-top:4px;">🏥 Bajas: -{baja_l}%</span>' if baja_l > 0 else ''
     baja_v_html = f'<span style="background:rgba(239,68,68,0.25);color:#fecaca;padding:2px 8px;border-radius:6px;font-size:0.70rem;margin-top:4px;">🏥 Bajas: -{baja_v}%</span>' if baja_v > 0 else ''
     extra_html = f'<div style="margin-top:6px;"><span style="background:rgba(234,88,12,0.30);color:#fed7aa;border:1px solid #f97316;padding:3px 10px;border-radius:999px;font-size:0.72rem;font-weight:800;">{badge_extra}</span></div>' if badge_extra else ''
@@ -411,7 +487,7 @@ def renderizar_hero_card_deporte(eq_l, eq_v, logo_l, fb_l, logo_v, fb_v, liga_tx
         f'<div class="hero-team">'
         f'<img src="{logo_l}" onerror="this.onerror=null;this.src=\'{fb_l}\';" class="hero-logo"/>'
         f'<div class="hero-team-name">{eq_l}</div>'
-        f'<span class="hero-badge-loc">🏠 LOCAL</span>{baja_l_html}'
+        f'<span class="hero-badge-loc">{sub_loc}</span>{baja_l_html}'
         f'</div>'
         f'<div class="hero-center">'
         f'<div class="hero-league-pill">{liga_txt}</div>'
@@ -423,7 +499,7 @@ def renderizar_hero_card_deporte(eq_l, eq_v, logo_l, fb_l, logo_v, fb_v, liga_tx
         f'<div class="hero-team">'
         f'<img src="{logo_v}" onerror="this.onerror=null;this.src=\'{fb_v}\';" class="hero-logo"/>'
         f'<div class="hero-team-name">{eq_v}</div>'
-        f'<span class="hero-badge-vis">✈️ VISITA</span>{baja_v_html}'
+        f'<span class="hero-badge-vis">{sub_vis}</span>{baja_v_html}'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -1049,7 +1125,7 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (15 Ligas + Clásicos Auto + Árbitro + SoS)",
+    "⚽ Fútbol (15 Ligas + Tabla Posiciones + Blowout + Árbitro)",
     "🎾 Tenis (ATP / WTA Superficie, Aces + Fotos)",
     "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Escudos)",
     "🏈 Fútbol Americano (NFL - Local/Visita + Escudos)",
@@ -1072,7 +1148,7 @@ with st.expander("📒 BITÁCORA DE AUDITORÍA DE APUESTAS (SIMPLES Y COMBINADAS
     estado_reg = b_col4.selectbox("Estado Ticket", ["⏳ Pendiente", "✅ Ganada", "❌ Perdida"])
 
     s1_c1, s1_c2, s1_c3 = st.columns([2.5, 1.0, 1.0])
-    sel1_txt = s1_c1.text_input("1️⃣ Partido y Mercado 1", placeholder="Ej. Real Madrid vs Barcelona - Over 4.5 Tarjetas")
+    sel1_txt = s1_c1.text_input("1️⃣ Partido y Mercado 1", placeholder="Ej. Juventus vs Venezia - Over 4.5 Córners 1T")
     cuota1_val = s1_c2.number_input("Cuota 1", 1.01, 50.0, 1.80, 0.05)
     cierre1_val = s1_c3.number_input("Cierre Betano 1", 1.01, 50.0, 1.72, 0.05)
 
@@ -1157,7 +1233,7 @@ with st.expander("📒 BITÁCORA DE AUDITORÍA DE APUESTAS (SIMPLES Y COMBINADAS
         st.download_button("📥 Descargar Bitácora en CSV / Excel", data=csv_export, file_name="bitacora_pro_bet_analyzer.csv", mime="text/csv")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (CLÁSICOS AUTO + ÁRBITRO REAL + DIXON-COLES + SoS + KELLY)
+# 1. MÓDULO FÚTBOL (TABLA POSICIONES + BLOWOUT DECAY + CLÁSICOS + ÁRBITRO)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -1202,22 +1278,31 @@ if deporte_activo.startswith("⚽"):
         st.error("No se pudo conectar al servidor de datos en este momento.")
         st.stop()
 
+    # Reconstruir Tabla de Posiciones Real desde el CSV de la temporada
+    df_tabla_pos, mapa_puestos_liga = calcular_tabla_posiciones_csv(df_csv)
+    total_eq_liga = max(len(df_tabla_pos), 18)
+
     equipos_fut = sorted(list(set(df_csv['HomeTeam'].unique()).union(set(df_csv['AwayTeam'].unique()))))
     c1, c2 = st.sidebar.columns(2)
     eq_l = c1.selectbox("🏠 Local", equipos_fut, index=0)
     eq_v = c2.selectbox("✈️ Visita", equipos_fut, index=1 if len(equipos_fut) > 1 else 0)
 
+    info_pos_l = mapa_puestos_liga.get(eq_l, {"pos": 10, "pts": 0, "pj": 0, "dg": 0})
+    info_pos_v = mapa_puestos_liga.get(eq_v, {"pos": 10, "pts": 0, "pj": 0, "dg": 0})
+
     col_opt1, col_opt2 = st.sidebar.columns(2)
     usar_amortiguador = col_opt1.checkbox("🛡️ Bayes (< 6 PJ)", value=False)
     usar_sos = col_opt2.checkbox("⚖️ Fuerza Rival (SoS)", value=True)
-    usar_dc = st.sidebar.checkbox("📐 Ajuste Dixon-Coles (0-0 / 1-1)", value=True)
+    col_opt3, col_opt4 = st.sidebar.columns(2)
+    usar_dc = col_opt3.checkbox("📐 Dixon-Coles", value=True)
+    usar_blowout = col_opt4.checkbox("🛡️ Anti-Goleada Córners", value=True)
 
     espn_sp, espn_lg = ESPN_LEAGUE_MAP.get(liga_sel, ("soccer", "eng.1"))
     _, mapa_logos_fut = obtener_catalogo_equipos_y_logos_espn(espn_sp, espn_lg)
     logo_eq_l, fb_eq_l = buscar_logo_equipo(eq_l, mapa_logos_fut, "#ff6b00")
     logo_eq_v, fb_eq_v = buscar_logo_equipo(eq_v, mapa_logos_fut, "#38bdf8")
 
-    # --- DETECCIÓN AUTOMÁTICA DE CLÁSICOS Y RIVALIDAD H2H ---
+    # Detección Automática de Clásicos y Rivalidad H2H
     media_tarj_base_liga = 4.0
     if 'HY' in df_csv.columns and 'AY' in df_csv.columns and not df_csv['HY'].dropna().empty:
         hr_all = df_csv['HR'].fillna(0) if 'HR' in df_csv.columns else 0
@@ -1226,7 +1311,7 @@ if deporte_activo.startswith("⚽"):
 
     es_clasico, factor_clasico, etiqueta_clasico = evaluar_clasico_y_friccion_h2h(eq_l, eq_v, df_csv, media_tarj_base_liga)
 
-    # --- ANÁLISIS REAL DE RIGUROSIDAD ARBITRAL DESDE COLUMNA 'Referee' ---
+    # Análisis Real de Rigurosidad Arbitral
     tiene_ref_csv = ('Referee' in df_csv.columns and 'HY' in df_csv.columns and not df_csv['Referee'].dropna().empty)
     mult_arbitro = 1.0
     info_arbitro_txt = "Estándar (1.00x)"
@@ -1277,7 +1362,6 @@ if deporte_activo.startswith("⚽"):
         elif "Tarjetero" in contexto_arb:
             mult_arbitro, info_arbitro_txt = 1.15, "Tarjetero (1.15x)"
 
-    # Factor disciplinario combinado: Rigor del Árbitro × Factor Automático de Clásico/Derbi
     mult_disciplina_total = round(mult_arbitro * factor_clasico, 3)
 
     mult_bajas_l, mult_bajas_v, pct_baja_l, pct_baja_v = renderizar_panel_bajas_y_factor(espn_sp, espn_lg, eq_l, eq_v, f"fut_{eq_l}_{eq_v}")
@@ -1336,6 +1420,22 @@ if deporte_activo.startswith("⚽"):
     gf_l = gf_l * mult_bajas_l
     gf_v = gf_v * mult_bajas_v
 
+    lam_loc = max((gf_l * gc_v) / media_liga, 0.15)
+    lam_vis = max((gf_v * gc_l) / media_liga, 0.12)
+    mat_raw = np.zeros((9, 9))
+    for i in range(9):
+        for j in range(9):
+            mat_raw[i, j] = poisson.pmf(i, lam_loc) * poisson.pmf(j, lam_vis)
+
+    mat = aplicar_dixon_coles(mat_raw, lam_loc, lam_vis, rho=-0.11) if usar_dc else mat_raw
+
+    # Evaluar Riesgo de Goleada Temprana (Blowout Decay) cruzando Tabla de Posiciones + Matriz
+    hay_riesgo_goleada, factor_blowout_cor, prob_goleada_val, msg_goleada = evaluar_riesgo_goleada_corners(
+        mat, info_pos_l["pos"], info_pos_v["pos"], total_eq_liga
+    )
+    if not usar_blowout:
+        factor_blowout_cor = 1.00
+
     tiene_tiros_csv = ('HS' in df_csv.columns and not p_l['HS'].dropna().empty and not p_v['AS'].dropna().empty)
     tiene_tarjetas_csv = ('HY' in df_csv.columns and not p_l['HY'].dropna().empty and not p_v['AY'].dropna().empty)
 
@@ -1343,8 +1443,14 @@ if deporte_activo.startswith("⚽"):
     sh_v = (float(p_v['AS'].mean()) if tiene_tiros_csv else round(8.5 + gf_v * 2.3, 1)) * (0.5 + 0.5 * mult_bajas_v)
     sot_l = (float(p_l['HST'].mean()) if tiene_tiros_csv else round(2.6 + gf_l * 1.25, 1)) * (0.5 + 0.5 * mult_bajas_l)
     sot_v = (float(p_v['AST'].mean()) if tiene_tiros_csv else round(2.2 + gf_v * 1.2, 1)) * (0.5 + 0.5 * mult_bajas_v)
-    cor_l = float(p_l['HC'].mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
-    cor_v = float(p_v['AC'].mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
+
+    cor_l_raw = float(p_l['HC'].mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
+    cor_v_raw = float(p_v['AC'].mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
+    # Aplicar Blowout Decay a los córners totales si existe riesgo de goleada temprana
+    cor_l = cor_l_raw * factor_blowout_cor
+    cor_v = cor_v_raw * factor_blowout_cor
+    # Córners del 1er Tiempo (1T): no sufren el enfriamiento del 2T (concentran ~48% del ritmo puro)
+    lam_cor_1t = (cor_l_raw + cor_v_raw) * 0.48
 
     if tiene_tarjetas_csv:
         hy_l = float(p_l['HY'].fillna(0).mean())
@@ -1358,15 +1464,6 @@ if deporte_activo.startswith("⚽"):
         tarj_tot_esp = round(4.40 * mult_disciplina_total, 2)
         pts_tarj_esp = round(4.60 * mult_disciplina_total, 2)
 
-    lam_loc = max((gf_l * gc_v) / media_liga, 0.15)
-    lam_vis = max((gf_v * gc_l) / media_liga, 0.12)
-    mat_raw = np.zeros((9, 9))
-    for i in range(9):
-        for j in range(9):
-            mat_raw[i, j] = poisson.pmf(i, lam_loc) * poisson.pmf(j, lam_vis)
-
-    mat = aplicar_dixon_coles(mat_raw, lam_loc, lam_vis, rho=-0.11) if usar_dc else mat_raw
-
     prob_1 = float(np.sum(np.tril(mat, -1)))
     prob_x = float(np.sum(np.diag(mat)))
     prob_2 = float(np.sum(np.triu(mat, 1)))
@@ -1375,12 +1472,16 @@ if deporte_activo.startswith("⚽"):
     prob_btts_no = float(np.sum(mat[0, :]) + np.sum(mat[:, 0]) - mat[0, 0])
     prob_btts_si = 1.0 - prob_btts_no
 
+    badge_hero = etiqueta_clasico if es_clasico else (f"⚠️ Brecha Tabla #{info_pos_l['pos']} vs #{info_pos_v['pos']} (Riesgo Goleada {prob_goleada_val*100:.0f}%)" if hay_riesgo_goleada else "")
+
     renderizar_hero_card_deporte(
         eq_l, eq_v, logo_eq_l, fb_eq_l, logo_eq_v, fb_eq_v,
         liga_sel, f"{lam_loc:.2f}  —  {lam_vis:.2f}",
         f"Goles Esp. (xG): {lam_loc+lam_vis:.2f} • Dixon-Coles: {'ON' if usar_dc else 'OFF'} • SoS: {'ON' if usar_sos else 'OFF'}",
         prob_1, prob_x, prob_2, pct_baja_l, pct_baja_v,
-        badge_extra=etiqueta_clasico if es_clasico else ""
+        badge_extra=badge_hero,
+        sub_loc=f"🏠 LOCAL • Puesto #{info_pos_l['pos']} ({info_pos_l['pts']} pts)",
+        sub_vis=f"✈️ VISITA • Puesto #{info_pos_v['pos']} ({info_pos_v['pts']} pts)"
     )
 
     TRADUCCION_COLS_FUTBOL = {
@@ -1392,28 +1493,35 @@ if deporte_activo.startswith("⚽"):
         "AY": "Amarillas Visita", "AR": "Rojas Visita"
     }
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA: Partidos reales, Árbitros, Tiros, Córners y Tarjetas ({eq_l} vs {eq_v})", expanded=False):
+    with st.expander(f"📋 TABLA DE AUDITORÍA: Clasificación, Partidos Reales, Árbitros y Córners ({eq_l} #{info_pos_l['pos']} vs {eq_v} #{info_pos_v['pos']})", expanded=False):
         if es_clasico:
             st.warning(f"**Alerta de Rivalidad Detectada:** {etiqueta_clasico} — El modelo multiplica automáticamente las tarjetas esperadas por `{factor_clasico:.2f}x`.")
+        if hay_riesgo_goleada:
+            st.warning(msg_goleada)
         if tiene_tiros_csv and tiene_tarjetas_csv:
             st.success("✅ Telemetría Completa Opta / Football-Data: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
         else:
             st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
 
         cols_l = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
-        st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL:**")
+        st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL (Puesto #{info_pos_l['pos']}):**")
         st.dataframe(p_l[cols_l].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
 
         trad_vis = dict(TRADUCCION_COLS_FUTBOL)
         trad_vis["FTHG"] = "Goles Local (En Contra)"
         trad_vis["FTAG"] = "Goles Visita (A Favor)"
         cols_v = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
-        st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE:**")
+        st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE (Puesto #{info_pos_v['pos']}):**")
         st.dataframe(p_v[cols_v].rename(columns=trad_vis), use_container_width=True, hide_index=True)
 
-        if not df_refs_stats.empty:
-            st.markdown("**🟨 Ranking Oficial de Rigurosidad Arbitral en la Liga (Datos Reales del CSV):**")
-            st.dataframe(df_refs_stats.head(15), use_container_width=True, hide_index=True)
+        c_sub1, c_sub2 = st.columns(2)
+        with c_sub1:
+            st.markdown("**🏆 Tabla de Posiciones Reconstruida del Torneo:**")
+            st.dataframe(df_tabla_pos, use_container_width=True, hide_index=True)
+        with c_sub2:
+            if not df_refs_stats.empty:
+                st.markdown("**🟨 Rigurosidad Arbitral en la Liga (Datos Reales):**")
+                st.dataframe(df_refs_stats.head(15), use_container_width=True, hide_index=True)
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟠 2. Cuotas en Betano (Goles & 1X2)")
@@ -1430,13 +1538,15 @@ if deporte_activo.startswith("⚽"):
     cuota_btts_si = cb6.number_input("BTTS SÍ", 1.01, 20.0, 1.80, 0.05)
     cuota_btts_no = cb7.number_input("BTTS NO", 1.01, 20.0, 1.95, 0.05)
 
-    with st.sidebar.expander("📏 Cuotas Tiros, Córners y Tarjetas"):
+    with st.sidebar.expander("📏 Cuotas Tiros, Córners (FT/1T) y Tarjetas"):
         linea_remates = st.number_input("Línea Tiros Totales", 10.5, 40.5, 24.5, 1.0)
         cuota_over_rem = st.number_input("Cuota Over Tiros", 1.01, 15.0, 1.85, 0.05)
         linea_puerta = st.number_input("Línea Tiros al Arco", 3.5, 20.5, 8.5, 1.0)
         cuota_over_pue = st.number_input("Cuota Over al Arco", 1.01, 15.0, 1.85, 0.05)
-        linea_corners = st.number_input("Línea Córners Totales", 4.5, 20.5, 8.5, 1.0)
-        cuota_over_cor = st.number_input("Cuota Over Córners", 1.01, 15.0, 1.85, 0.05)
+        linea_corners = st.number_input("Línea Córners Totales (FT)", 4.5, 20.5, 8.5, 1.0)
+        cuota_over_cor = st.number_input("Cuota Over Córners FT", 1.01, 15.0, 1.85, 0.05)
+        linea_cor_1t = st.number_input("Línea Córners 1er Tiempo (1T)", 2.5, 8.5, 4.5, 1.0)
+        cuota_over_cor_1t = st.number_input("Cuota Over Córners 1T", 1.01, 15.0, 1.90, 0.05)
         st.markdown("---")
         linea_tarjetas = st.number_input("🟨 Línea Tarjetas Totales", 1.5, 9.5, 4.5, 1.0)
         cuota_over_tarj = st.number_input("Cuota Over Tarjetas", 1.01, 15.0, 1.85, 0.05)
@@ -1448,6 +1558,7 @@ if deporte_activo.startswith("⚽"):
     p_ov_pue = float(1.0 - norm.cdf(linea_puerta, loc=lam_pue, scale=2.75))
     lam_cor = cor_l + cor_v
     p_ov_cor = float(1.0 - norm.cdf(linea_corners, loc=lam_cor, scale=3.35))
+    p_ov_cor_1t = float(1.0 - norm.cdf(linea_cor_1t, loc=lam_cor_1t, scale=2.15))
     p_ov_tarj = float(1.0 - sum(poisson.pmf(k, max(tarj_tot_esp, 0.5)) for k in range(int(linea_tarjetas) + 1)))
     p_un_tarj = 1.0 - p_ov_tarj
 
@@ -1455,13 +1566,13 @@ if deporte_activo.startswith("⚽"):
     k1.metric("⚽ Goles Esp. (xG)", f"{lam_loc:.2f} - {lam_vis:.2f}", f"Total: {lam_loc+lam_vis:.2f}")
     k2.metric("🎯 Tiros Totales Esp.", f"{lam_rem:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
     k3.metric("🥅 Tiros al Arco Esp.", f"{lam_pue:.1f} arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
-    k4.metric("⛳ Córners Esp.", f"{lam_cor:.1f} esq.", f"{cor_l:.1f} L + {cor_v:.1f} V")
+    k4.metric("⛳ Córners FT / 1T", f"{lam_cor:.1f} FT | {lam_cor_1t:.1f} 1T", "Anti-Goleada -14%" if (hay_riesgo_goleada and usar_blowout) else f"{cor_l:.1f} L + {cor_v:.1f} V")
     k5.metric("🟨 Tarjetas Esp.", f"{tarj_tot_esp:.1f} tarj.", f"Factor: {mult_disciplina_total:.2f}x {'(Clásico)' if es_clasico else ''}")
 
     CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🎯 1. Goles y 1X2", "⛳ 2. Tiros y Córners", "🟨 3. Tarjetas (Árbitro/Clásico)",
+        "🎯 1. Goles y 1X2", "⛳ 2. Tiros y Córners (FT / 1T)", "🟨 3. Tarjetas (Árbitro/Clásico)",
         "🔢 4. Matriz Exacta", "🔴 5. Radar En Vivo"
     ])
     with tab1:
@@ -1478,13 +1589,16 @@ if deporte_activo.startswith("⚽"):
         st.dataframe(df_t1.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with tab2:
+        if hay_riesgo_goleada and usar_blowout:
+            st.warning(msg_goleada)
         m_e = [
-            (f"Más de {linea_remates} Tiros Totales (Over)", p_ov_rem, cuota_over_rem),
-            (f"Menos de {linea_remates} Tiros Totales (Under)", 1.0 - p_ov_rem, 1.85),
-            (f"Más de {linea_puerta} Tiros al Arco (Over)", p_ov_pue, cuota_over_pue),
-            (f"Menos de {linea_puerta} Tiros al Arco (Under)", 1.0 - p_ov_pue, 1.85),
-            (f"Más de {linea_corners} Córners Totales (Over)", p_ov_cor, cuota_over_cor),
-            (f"Menos de {linea_corners} Córners Totales (Under)", 1.0 - p_ov_cor, 1.85)
+            (f"⛳ 1er Tiempo: Más de {linea_cor_1t} Córners 1T (Over)", p_ov_cor_1t, cuota_over_cor_1t),
+            (f"⛳ Partido Completo: Más de {linea_corners} Córners FT (Over)", p_ov_cor, cuota_over_cor),
+            (f"⛳ Partido Completo: Menos de {linea_corners} Córners FT (Under)", 1.0 - p_ov_cor, 1.85),
+            (f"🎯 Más de {linea_remates} Tiros Totales (Over)", p_ov_rem, cuota_over_rem),
+            (f"🎯 Menos de {linea_remates} Tiros Totales (Under)", 1.0 - p_ov_rem, 1.85),
+            (f"🥅 Más de {linea_puerta} Tiros al Arco (Over)", p_ov_pue, cuota_over_pue),
+            (f"🥅 Menos de {linea_puerta} Tiros al Arco (Under)", 1.0 - p_ov_pue, 1.85)
         ]
         df_t2 = construir_tabla_mercados_kelly(m_e, "Mercado Especial", banca_usuario, fraccion_kelly_val, min_prob_filtro, min_edge_filtro)
         st.dataframe(df_t2.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
