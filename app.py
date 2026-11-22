@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 15.2 | Standings & Blowout Decay Suite",
+    page_title="Pro Bet Analyzer 16.0 | Omni-Sport Quant Edition",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -28,7 +28,7 @@ if "bitacora_apuestas" not in st.session_state:
         "Prob. Modelo (%)", "Stake ($)", "Estado", "Retorno ($)", "Beneficio Neto ($)"
     ])
 
-# --- ESTILOS CSS EJECUTIVOS Y RESPONSIVE PARA CELULARES ---
+# --- ESTILOS CSS EJECUTIVOS Y RESPONSIVE PARA COMPUTADORA Y CELULARES ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
@@ -45,10 +45,62 @@ html, body, [class*="css"] {
 
 section[data-testid="stSidebar"] {
     background-color: #121216;
-    border-right: 1px solid rgba(255, 255, 255, 0.10);
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
 }
-section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span {
-    color: #e4e4e7 !important;
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+    color: #f4f4f5 !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
+section[data-testid="stSidebar"] input {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] span,
+section[data-testid="stSidebar"] div[data-baseweb="select"] div {
+    color: #111827 !important;
+}
+
+section[data-testid="stSidebar"] code {
+    background-color: #27272a !important;
+    color: #ff9e44 !important;
+    padding: 2px 6px !important;
+    border-radius: 5px !important;
+    font-weight: 700 !important;
+}
+
+div[data-testid="stAlert"] p,
+div[data-testid="stAlert"] span,
+div[data-testid="stAlert"] strong {
+    color: #111827 !important;
+    font-weight: 600 !important;
+}
+
+.clasico-sidebar-box {
+    background: linear-gradient(135deg, #2d1406 0%, #431a07 100%);
+    border: 2px solid #ff6b00;
+    border-left: 6px solid #ff8c00;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin: 8px 0 12px 0;
+    box-shadow: 0 6px 16px rgba(255, 107, 0, 0.25);
+}
+.clasico-sidebar-title {
+    color: #ff9e44 !important;
+    font-size: 0.74rem !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 4px;
+}
+.clasico-sidebar-text {
+    color: #ffffff !important;
+    font-size: 0.96rem !important;
+    font-weight: 800 !important;
+    line-height: 1.3;
 }
 
 .main-banner {
@@ -226,13 +278,15 @@ button[data-baseweb="tab"] {
     .hero-sub { font-size: 0.72rem; }
     .hero-league-pill { font-size: 0.66rem; padding: 3px 8px; }
     .prob-labels { font-size: 0.68rem; }
+    .clasico-sidebar-box { padding: 12px; }
+    .clasico-sidebar-text { font-size: 0.92rem !important; }
     div[data-testid="stMetric"] { padding: 10px 12px; }
     div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1.18rem !important; }
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 15.2 <span style="color:#ff8c00;">| STANDINGS & BLOWOUT DECAY SUITE</span></h1>
-<p>Reconstrucción de Tabla de Posiciones • Filtro Anti-Goleada en Córners (1T vs FT) • Clásicos Auto • Kelly & Bitácora 3X</p>
+<h1>🏆 PRO BET ANALYZER 16.0 <span style="color:#ff8c00;">| OMNI-SPORT QUANT EDITION</span></h1>
+<p>5 Deportes Calibrados: Back-to-Back Auto (NHL/NBA) • Spreads • Clima NFL • Superficie 2x Tenis • Clásicos & Anti-Goleada Fútbol</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -242,10 +296,6 @@ HEADERS_HTTP = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWe
 # RECONSTRUCTOR DE TABLA DE POSICIONES Y DETECTOR DE RIESGO DE GOLEADA (BLOWOUT)
 # ==============================================================================
 def calcular_tabla_posiciones_csv(df_csv):
-    """
-    Reconstruye la tabla de posiciones oficial del torneo a partir de los resultados
-    del CSV (3 pts victoria, 1 pt empate) y devuelve el DataFrame ordenado y el mapa de puestos.
-    """
     if df_csv.empty:
         return pd.DataFrame(), {}
     equipos = sorted(list(set(df_csv['HomeTeam'].unique()).union(set(df_csv['AwayTeam'].unique()))))
@@ -298,10 +348,6 @@ def calcular_tabla_posiciones_csv(df_csv):
     return df_pos, mapa_puestos
 
 def evaluar_riesgo_goleada_corners(mat, pos_loc, pos_vis, total_equipos):
-    """
-    Calcula la probabilidad exacta de goleada (>= 3 goles de diferencia) desde la matriz
-    y la cruza con la brecha de puestos en la tabla para activar el Blowout Decay en córners.
-    """
     prob_goleada_loc = 0.0
     prob_goleada_vis = 0.0
     for i in range(mat.shape[0]):
@@ -315,14 +361,13 @@ def evaluar_riesgo_goleada_corners(mat, pos_loc, pos_vis, total_equipos):
     brecha_puestos = abs(pos_loc - pos_vis)
     umbral_brecha = max(int(total_equipos * 0.45), 6)
 
-    # Activar protocolo si hay brecha fuerte en tabla y probabilidad de goleada >= 18%
     if (brecha_puestos >= umbral_brecha and prob_goleada_max >= 0.16) or (prob_goleada_max >= 0.24):
-        factor_decay = 0.86  # -14% en córners de partido completo por enfriamiento del 2T
+        factor_decay = 0.86
         quien_golea = "Local" if prob_goleada_loc >= prob_goleada_vis else "Visita"
         msg = (
-            f"⚠️ **Alerta Anti-Goleada Activa (Brecha #{pos_loc} vs #{pos_vis} | Prob. Goleada ≥3 goles: {prob_goleada_max*100:.1f}%):** "
+            f"⚠️ Alerta Anti-Goleada Activa (Brecha #{pos_loc} vs #{pos_vis} | Prob. Goleada ≥3 goles: {prob_goleada_max*100:.1f}%): "
             f"Si {quien_golea} liquida el partido temprano (ej. 3-0 al min 60), el ritmo de córners en el 2T cae drásticamente. "
-            f"Se aplicó un ajuste de **-14%** a los córners totales. **Sugerencia táctica:** Prioriza **Córners 1er Tiempo (1T)** o *Cash Out* al descanso."
+            f"Se aplicó un ajuste de -14% a los córners totales. Sugerencia táctica: Prioriza Córners 1er Tiempo (1T) o Cash Out al descanso."
         )
         return True, factor_decay, prob_goleada_max, msg
 
@@ -420,8 +465,23 @@ def evaluar_clasico_y_friccion_h2h(eq_loc, eq_vis, df_csv, media_tarj_liga=4.0):
     return False, 1.00, "Rivalidad Estándar (1.00x)"
 
 # ==============================================================================
-# UTILIDADES CUANTITATIVAS: CRITERIO DE KELLY, DIXON-COLES Y ESCUDOS
+# UTILIDADES CUANTITATIVAS: CRITERIO DE KELLY, DIXON-COLES, B2B Y ESCUDOS
 # ==============================================================================
+def detectar_fatiga_back_to_back(df_partidos, col_fecha="Fecha"):
+    """Detecta automáticamente si el equipo/jugador compitió en las últimas 36 horas (Back-to-Back)."""
+    if df_partidos.empty or col_fecha not in df_partidos.columns:
+        return False, ""
+    try:
+        ult_str = str(df_partidos[col_fecha].iloc[-1])[:10]
+        ult_dt = datetime.strptime(ult_str, "%Y-%m-%d").date()
+        hoy_utc = datetime.utcnow().date()
+        dias_diff = (hoy_utc - ult_dt).days
+        if 0 <= dias_diff <= 1:
+            return True, f"⚡ Back-to-Back Detectado (Jugó {ult_str})"
+    except Exception:
+        pass
+    return False, ""
+
 def calcular_kelly_stake(prob_real, cuota_betano, banca_actual, fraccion_kelly, min_prob_pct, min_edge_pct):
     edge = (prob_real * cuota_betano) - 1.0
     if (prob_real * 100.0) < min_prob_pct or (edge * 100.0) < min_edge_pct or cuota_betano <= 1.01:
@@ -474,7 +534,7 @@ def buscar_logo_equipo(nombre_club, mapa_logos, color_fallback="#ff6b00"):
 def renderizar_hero_card_deporte(eq_l, eq_v, logo_l, fb_l, logo_v, fb_v, liga_txt, marcador_txt, sub_txt, p_l, p_x, p_v, baja_l=0, baja_v=0, badge_extra="", sub_loc="🏠 LOCAL", sub_vis="✈️ VISITA"):
     baja_l_html = f'<span style="background:rgba(239,68,68,0.25);color:#fecaca;padding:2px 8px;border-radius:6px;font-size:0.70rem;margin-top:4px;">🏥 Bajas: -{baja_l}%</span>' if baja_l > 0 else ''
     baja_v_html = f'<span style="background:rgba(239,68,68,0.25);color:#fecaca;padding:2px 8px;border-radius:6px;font-size:0.70rem;margin-top:4px;">🏥 Bajas: -{baja_v}%</span>' if baja_v > 0 else ''
-    extra_html = f'<div style="margin-top:6px;"><span style="background:rgba(234,88,12,0.30);color:#fed7aa;border:1px solid #f97316;padding:3px 10px;border-radius:999px;font-size:0.72rem;font-weight:800;">{badge_extra}</span></div>' if badge_extra else ''
+    extra_html = f'<div style="margin-top:6px;"><span style="background:rgba(234,88,12,0.35);color:#ffffff;border:1.5px solid #ff8c00;padding:4px 12px;border-radius:999px;font-size:0.76rem;font-weight:800;">{badge_extra}</span></div>' if badge_extra else ''
 
     if p_x is not None and p_x > 0.005:
         bar_html = f'<div class="prob-bar-wrap"><div style="width:{p_l*100:.1f}%; background:#ff6b00;"></div><div style="width:{p_x*100:.1f}%; background:#71717a;"></div><div style="width:{p_v*100:.1f}%; background:#38bdf8;"></div></div><div class="prob-labels"><span style="color:#ff9e44;">1: {p_l*100:.1f}%</span><span style="color:#d4d4d8;">X: {p_x*100:.1f}%</span><span style="color:#7dd3fc;">2: {p_v*100:.1f}%</span></div>'
@@ -750,7 +810,7 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
 
     with st.expander(f"🏥 INTELIGENCIA AUTOMÁTICA DE BAJAS, LESIONES Y NOTICIAS ({eq_loc} vs. {eq_vis})", expanded=(not df_inj.empty or auto_pen_l > 0 or auto_pen_v > 0)):
         if not df_inj.empty:
-            st.warning(f"⚠️ **Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas en API ESPN) — Factor Auto-Calculado: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)**")
+            st.warning(f"⚠️ Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas en API ESPN) — Factor Auto-Calculado: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)")
             cols_visibles = [c for c in df_inj.columns if not c.startswith("_")]
             st.dataframe(df_inj[cols_visibles].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
         else:
@@ -949,7 +1009,7 @@ def extraer_ultimos_partidos_nhl_con_sog(abbrev, condicion="HOME", n_partidos=5)
     return df_out
 
 # ==============================================================================
-# MOTOR DE TENIS CONECTADO EN VIVO A ESPN (FOTOS REALES + SUPERFICIES + ACES)
+# MOTOR DE TENIS CONECTADO EN VIVO A ESPN (SUPERFICIE 2X + DESGASTE + ACES)
 # ==============================================================================
 ACES_BASE_AUDITADOS = {
     "Jannik Sinner": 8.8, "Carlos Alcaraz": 6.4, "Alexander Zverev": 10.8, "Novak Djokovic": 7.6,
@@ -1100,8 +1160,12 @@ def calcular_perfil_superficie_real(df_partidos, rank_actual, circuito, nombre_t
                 jg_tot = float(sub_s["J_Gan"].sum())
                 jp_tot = float(sub_s["J_Per"].sum())
                 if (jg_tot + jp_tot) > 15:
-                    ratio_j = jg_tot / (jg_tot + jp_tot)
-                    ajuste = (ratio_j - 0.50) * 26.0
+                    # Ponderación 2x para los partidos más recientes en esa misma superficie
+                    ult_s = sub_s.tail(4)
+                    jg_rec = float(ult_s["J_Gan"].sum())
+                    jp_rec = float(ult_s["J_Per"].sum())
+                    ratio_j = ((jg_tot + jg_rec) / max(jg_tot + jp_tot + jg_rec + jp_rec, 1.0))
+                    ajuste = (ratio_j - 0.50) * 28.0
                     stats_sup[sup_k]["Hold"] = round(float(np.clip(stats_sup[sup_k]["Hold"] + ajuste, 58.0, 94.0)), 1)
                     stats_sup[sup_k]["Break"] = round(float(np.clip(stats_sup[sup_k]["Break"] + ajuste * 0.8, 15.0, 54.0)), 1)
                     stats_sup[sup_k]["Juegos_Prom"] = round(float((jg_tot + jp_tot) / len(sub_s)), 1)
@@ -1126,10 +1190,10 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
     "⚽ Fútbol (15 Ligas + Tabla Posiciones + Blowout + Árbitro)",
-    "🎾 Tenis (ATP / WTA Superficie, Aces + Fotos)",
-    "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Escudos)",
-    "🏈 Fútbol Americano (NFL - Local/Visita + Escudos)",
-    "🏀 Basketball (NBA - API ESPN + Escudos)",
+    "🎾 Tenis (ATP / WTA Superficie 2x, Aces + Indoor/Altura)",
+    "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Portero + B2B)",
+    "🏀 Basketball (NBA - Local/Visita, B2B + Spread)",
+    "🏈 Fútbol Americano (NFL - Local/Visita, Clima + Spread)",
     "⚾ Béisbol (MLB - API ESPN + Escudos)"
 ]
 deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opciones_deportes, index=0)
@@ -1143,12 +1207,12 @@ with st.expander("📒 BITÁCORA DE AUDITORÍA DE APUESTAS (SIMPLES Y COMBINADAS
     st.markdown("**➕ Registrar Nueva Operación (Simple 1X o Combinada 2X / 3X):**")
     b_col1, b_col2, b_col3, b_col4 = st.columns([1.2, 1.4, 1.0, 1.0])
     tipo_apuesta_reg = b_col1.selectbox("Tipo de Ticket", ["Simple (1 Partido)", "Combinada (2 Partidos)", "Combinada (3 Partidos)"])
-    deporte_reg = b_col2.text_input("Deporte / Torneo", value="Fútbol / Multi-Deporte")
+    deporte_reg = b_col2.text_input("Deporte / Torneo", value="Multi-Deporte")
     stake_reg = b_col3.number_input("Monto Apostado ($)", min_value=0.10, max_value=100000.0, value=round(max(banca_usuario * 0.05, 1.0), 2), step=1.0)
     estado_reg = b_col4.selectbox("Estado Ticket", ["⏳ Pendiente", "✅ Ganada", "❌ Perdida"])
 
     s1_c1, s1_c2, s1_c3 = st.columns([2.5, 1.0, 1.0])
-    sel1_txt = s1_c1.text_input("1️⃣ Partido y Mercado 1", placeholder="Ej. Juventus vs Venezia - Over 4.5 Córners 1T")
+    sel1_txt = s1_c1.text_input("1️⃣ Partido y Mercado 1", placeholder="Ej. Liverpool vs Man United - Over 4.5 Tarjetas")
     cuota1_val = s1_c2.number_input("Cuota 1", 1.01, 50.0, 1.80, 0.05)
     cierre1_val = s1_c3.number_input("Cierre Betano 1", 1.01, 50.0, 1.72, 0.05)
 
@@ -1162,7 +1226,7 @@ with st.expander("📒 BITÁCORA DE AUDITORÍA DE APUESTAS (SIMPLES Y COMBINADAS
 
     if "3 Partidos" in tipo_apuesta_reg:
         s3_c1, s3_c2, s3_c3 = st.columns([2.5, 1.0, 1.0])
-        sel3_txt = s3_c1.text_input("3️⃣ Partido y Mercado 3", placeholder="Ej. Rangers vs Bruins - Over 5.5 Goles")
+        sel3_txt = s3_c1.text_input("3️⃣ Partido y Mercado 3", placeholder="Ej. Celtics vs Heat - Celtics -4.5")
         cuota3_val = s3_c2.number_input("Cuota 3", 1.01, 50.0, 1.75, 0.05)
         cierre3_val = s3_c3.number_input("Cierre Betano 3", 1.01, 50.0, 1.70, 0.05)
     else:
@@ -1278,7 +1342,6 @@ if deporte_activo.startswith("⚽"):
         st.error("No se pudo conectar al servidor de datos en este momento.")
         st.stop()
 
-    # Reconstruir Tabla de Posiciones Real desde el CSV de la temporada
     df_tabla_pos, mapa_puestos_liga = calcular_tabla_posiciones_csv(df_csv)
     total_eq_liga = max(len(df_tabla_pos), 18)
 
@@ -1302,7 +1365,6 @@ if deporte_activo.startswith("⚽"):
     logo_eq_l, fb_eq_l = buscar_logo_equipo(eq_l, mapa_logos_fut, "#ff6b00")
     logo_eq_v, fb_eq_v = buscar_logo_equipo(eq_v, mapa_logos_fut, "#38bdf8")
 
-    # Detección Automática de Clásicos y Rivalidad H2H
     media_tarj_base_liga = 4.0
     if 'HY' in df_csv.columns and 'AY' in df_csv.columns and not df_csv['HY'].dropna().empty:
         hr_all = df_csv['HR'].fillna(0) if 'HR' in df_csv.columns else 0
@@ -1311,7 +1373,6 @@ if deporte_activo.startswith("⚽"):
 
     es_clasico, factor_clasico, etiqueta_clasico = evaluar_clasico_y_friccion_h2h(eq_l, eq_v, df_csv, media_tarj_base_liga)
 
-    # Análisis Real de Rigurosidad Arbitral
     tiene_ref_csv = ('Referee' in df_csv.columns and 'HY' in df_csv.columns and not df_csv['Referee'].dropna().empty)
     mult_arbitro = 1.0
     info_arbitro_txt = "Estándar (1.00x)"
@@ -1320,7 +1381,13 @@ if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟨 Rigurosidad Arbitral y Clásico")
     if es_clasico:
-        st.sidebar.warning(etiqueta_clasico)
+        st.sidebar.markdown(
+            f'<div class="clasico-sidebar-box">'
+            f'<div class="clasico-sidebar-title">⚡ Rivalidad Detectada</div>'
+            f'<div class="clasico-sidebar-text">{etiqueta_clasico}</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 
     if tiene_ref_csv:
         df_r_tmp = df_csv.dropna(subset=['Referee', 'HY', 'AY']).copy()
@@ -1375,7 +1442,6 @@ if deporte_activo.startswith("⚽"):
     media_gc_liga_away = media_gf_liga_home
     media_liga = max((media_gf_liga_home + media_gc_liga_home) / 2.0, 1.25)
 
-    # Ponderación por Fuerza del Rival (Strength of Schedule - SoS)
     if usar_sos and not p_l.empty and not p_v.empty:
         ataque_liga = df_csv.groupby('HomeTeam')['FTHG'].mean().to_dict()
         defensa_liga = df_csv.groupby('AwayTeam')['FTHG'].mean().to_dict()
@@ -1429,7 +1495,6 @@ if deporte_activo.startswith("⚽"):
 
     mat = aplicar_dixon_coles(mat_raw, lam_loc, lam_vis, rho=-0.11) if usar_dc else mat_raw
 
-    # Evaluar Riesgo de Goleada Temprana (Blowout Decay) cruzando Tabla de Posiciones + Matriz
     hay_riesgo_goleada, factor_blowout_cor, prob_goleada_val, msg_goleada = evaluar_riesgo_goleada_corners(
         mat, info_pos_l["pos"], info_pos_v["pos"], total_eq_liga
     )
@@ -1446,10 +1511,8 @@ if deporte_activo.startswith("⚽"):
 
     cor_l_raw = float(p_l['HC'].mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
     cor_v_raw = float(p_v['AC'].mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
-    # Aplicar Blowout Decay a los córners totales si existe riesgo de goleada temprana
     cor_l = cor_l_raw * factor_blowout_cor
     cor_v = cor_v_raw * factor_blowout_cor
-    # Córners del 1er Tiempo (1T): no sufren el enfriamiento del 2T (concentran ~48% del ritmo puro)
     lam_cor_1t = (cor_l_raw + cor_v_raw) * 0.48
 
     if tiene_tarjetas_csv:
@@ -1495,7 +1558,7 @@ if deporte_activo.startswith("⚽"):
 
     with st.expander(f"📋 TABLA DE AUDITORÍA: Clasificación, Partidos Reales, Árbitros y Córners ({eq_l} #{info_pos_l['pos']} vs {eq_v} #{info_pos_v['pos']})", expanded=False):
         if es_clasico:
-            st.warning(f"**Alerta de Rivalidad Detectada:** {etiqueta_clasico} — El modelo multiplica automáticamente las tarjetas esperadas por `{factor_clasico:.2f}x`.")
+            st.warning(f"Alerta de Rivalidad Detectada: {etiqueta_clasico} — El modelo multiplica automáticamente las tarjetas esperadas por {factor_clasico:.2f}x.")
         if hay_riesgo_goleada:
             st.warning(msg_goleada)
         if tiene_tiros_csv and tiene_tarjetas_csv:
@@ -1607,7 +1670,7 @@ if deporte_activo.startswith("⚽"):
         if not tiene_tarjetas_csv:
             st.warning("⚠️ Esta liga no incluye columnas oficiales de tarjetas en el archivo CSV. No se recomienda operar mercados de tarjetas aquí.")
         else:
-            st.info(f"📊 **Disciplina + Árbitro ({info_arbitro_txt}) + Rivalidad ({etiqueta_clasico}):** **{eq_l}** (`{hy_l:.1f}` amarillas / `{hr_l:.2f}` rojas) + **{eq_v}** (`{ay_v:.1f}` amarillas / `{ar_v:.2f}` rojas) × `{mult_disciplina_total:.2f}x` = **`{tarj_tot_esp:.2f}` tarjetas esperadas**.")
+            st.info(f"📊 Disciplina + Árbitro ({info_arbitro_txt}) + Rivalidad ({etiqueta_clasico}): {eq_l} ({hy_l:.1f} amarillas / {hr_l:.2f} rojas) + {eq_v} ({ay_v:.1f} amarillas / {ar_v:.2f} rojas) × {mult_disciplina_total:.2f}x = {tarj_tot_esp:.2f} tarjetas esperadas.")
             m_tarj = [
                 (f"🟨 Más de {linea_tarjetas} Tarjetas Totales (Over)", p_ov_tarj, cuota_over_tarj),
                 (f"🟨 Menos de {linea_tarjetas} Tarjetas Totales (Under)", p_un_tarj, cuota_under_tarj)
@@ -1629,11 +1692,11 @@ if deporte_activo.startswith("⚽"):
         frac_rest = max((94.0 - min_act) / 94.0, 0.04)
         lam_rest = (lam_loc + lam_vis) * frac_rest
         p_1_gol_mas = 1.0 - poisson.pmf(0, lam_rest)
-        st.info(f"🔥 **Probabilidad de +0.5 Goles Restantes:** `{p_1_gol_mas*100:.1f}%` | **Cuota Mínima Justa:** `{1/max(p_1_gol_mas, 0.01):.2f}`")
+        st.info(f"🔥 Probabilidad de +0.5 Goles Restantes: {p_1_gol_mas*100:.1f}% | Cuota Mínima Justa: {1/max(p_1_gol_mas, 0.01):.2f}")
 
 
 # ==============================================================================
-# 2. MÓDULO TENIS (FOTOS OFICIALES + CANCHA DINÁMICA + ACES + KELLY)
+# 2. MÓDULO TENIS (SUPERFICIE 2X + DESGASTE TORNEO + INDOOR/ALTURA + ACES)
 # ==============================================================================
 elif deporte_activo.startswith("🎾"):
     st.sidebar.markdown("### 🎾 1. Circuito, Superficie y Tenistas")
@@ -1646,6 +1709,15 @@ elif deporte_activo.startswith("🎾"):
             "🟩 Césped (Grass - Rápida • +32% Aces)"
         ]
     )
+    condicion_pista = st.sidebar.selectbox(
+        "🏟️ Condición Ambiental / Velocidad:",
+        [
+            "☀️ Outdoor Estándar (1.00x Aces)",
+            "🏢 Indoor / Techado o Altura (+18% Aces)",
+            "🌙 Pista Pesada / Nocturna (-12% Aces)"
+        ]
+    )
+    mult_pista_aces = 1.18 if "Indoor" in condicion_pista else (0.88 if "Pesada" in condicion_pista else 1.00)
     formato_sets = st.sidebar.radio("Formato del Partido:", ["Al mejor de 3 Sets (Estándar)", "Al mejor de 5 Sets (Grand Slam)"])
 
     catalogo_espn_tenis = obtener_rankings_oficiales_espn_tenis(circuito)
@@ -1664,16 +1736,6 @@ elif deporte_activo.startswith("🎾"):
     jug_a = col_t1.selectbox("🎾 Tenista A", lista_tenistas, index=idx_a)
     jug_b = col_t2.selectbox("🎾 Tenista B", lista_tenistas, index=idx_b)
 
-    pref_t = "atp" if "ATP" in circuito else "wta"
-    noticias_t = obtener_noticias_relevantes_espn("tennis", pref_t, jug_a, jug_b)
-    auto_fat_a, auto_fat_b = calcular_penalizacion_automatica(pd.DataFrame(), noticias_t, jug_a, jug_b)
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🏥 Factor Físico / Fatiga (Auto)")
-    st.sidebar.caption(f"🤖 Sugerencia: **{jug_a} (-{auto_fat_a}%)** | **{jug_b} (-{auto_fat_b}%)**")
-    fat_a = st.sidebar.slider(f"Penalización Físico {jug_a} (%)", 0, 25, min(auto_fat_a, 25), 5)
-    fat_b = st.sidebar.slider(f"Penalización Físico {jug_b} (%)", 0, 25, min(auto_fat_b, 25), 5)
-
     info_a = catalogo_espn_tenis[jug_a]
     info_b = catalogo_espn_tenis[jug_b]
     rank_a, pts_rank_a, foto_a = info_a["rank"], info_a["points"], info_a["foto"]
@@ -1684,6 +1746,24 @@ elif deporte_activo.startswith("🎾"):
     with st.spinner(f"Extrayendo historial oficial en vivo de ESPN para {jug_a} y {jug_b}..."):
         df_part_a = obtener_partidos_reales_espn_tenista(circuito, info_a["id"], jug_a)
         df_part_b = obtener_partidos_reales_espn_tenista(circuito, info_b["id"], jug_b)
+
+    pref_t = "atp" if "ATP" in circuito else "wta"
+    noticias_t = obtener_noticias_relevantes_espn("tennis", pref_t, jug_a, jug_b)
+    auto_fat_a, auto_fat_b = calcular_penalizacion_automatica(pd.DataFrame(), noticias_t, jug_a, jug_b)
+
+    # Detectar fatiga por partido reciente en las últimas 36 horas
+    b2b_ta, msg_b2b_ta = detectar_fatiga_back_to_back(df_part_a, "Fecha")
+    b2b_tb, msg_b2b_tb = detectar_fatiga_back_to_back(df_part_b, "Fecha")
+    if b2b_ta:
+        auto_fat_a = min(auto_fat_a + 5, 25)
+    if b2b_tb:
+        auto_fat_b = min(auto_fat_b + 5, 25)
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🏥 Factor Físico / Desgaste Torneo")
+    st.sidebar.caption(f"🤖 Auto-cálculo: **{jug_a} (-{auto_fat_a}%)** | **{jug_b} (-{auto_fat_b}%)**")
+    fat_a = st.sidebar.slider(f"Penalización Físico {jug_a} (%)", 0, 25, min(auto_fat_a, 25), 5)
+    fat_b = st.sidebar.slider(f"Penalización Físico {jug_b} (%)", 0, 25, min(auto_fat_b, 25), 5)
 
     sup_a = calcular_perfil_superficie_real(df_part_a, rank_a, circuito, jug_a)
     sup_b = calcular_perfil_superficie_real(df_part_b, rank_b, circuito, jug_b)
@@ -1729,12 +1809,11 @@ elif deporte_activo.startswith("🎾"):
     ajuste_resto_vs_a = np.clip(1.0 + ((media_brk_circuito - brk_b_sup) / 100.0) * 1.15, 0.78, 1.25)
     ajuste_resto_vs_b = np.clip(1.0 + ((media_brk_circuito - brk_a_sup) / 100.0) * 1.15, 0.78, 1.25)
 
-    aces_esp_a = round(sup_a[clave_sup]["Aces"] * ajuste_resto_vs_a * factor_formato_aces * (1.0 - fat_a / 150.0), 1)
-    aces_esp_b = round(sup_b[clave_sup]["Aces"] * ajuste_resto_vs_b * factor_formato_aces * (1.0 - fat_b / 150.0), 1)
+    aces_esp_a = round(sup_a[clave_sup]["Aces"] * ajuste_resto_vs_a * factor_formato_aces * mult_pista_aces * (1.0 - fat_a / 150.0), 1)
+    aces_esp_b = round(sup_b[clave_sup]["Aces"] * ajuste_resto_vs_b * factor_formato_aces * mult_pista_aces * (1.0 - fat_b / 150.0), 1)
     aces_totales_esp = round(aces_esp_a + aces_esp_b, 1)
 
     favorito_nom = jug_a if p_gana_a >= p_gana_b else jug_b
-    fav_prob = max(p_gana_a, p_gana_b) * 100.0
     fav_cuota_justa = 1.0 / max(p_gana_a, p_gana_b)
     fav_rk = rank_a if p_gana_a >= p_gana_b else rank_b
 
@@ -1763,7 +1842,9 @@ elif deporte_activo.startswith("🎾"):
     )
     st.markdown(html_tenis_hero, unsafe_allow_html=True)
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA TENIS: Superficies, Aces, Noticias y Últimos Partidos ({jug_a} vs {jug_b})", expanded=False):
+    with st.expander(f"📋 TABLA DE AUDITORÍA TENIS: Superficies (Peso 2x), Aces y Últimos Partidos ({jug_a} vs {jug_b})", expanded=False):
+        if b2b_ta or b2b_tb:
+            st.warning(f"Alerta de Fatiga Reciente: {jug_a if b2b_ta else ''} {msg_b2b_ta} | {jug_b if b2b_tb else ''} {msg_b2b_tb}")
         if noticias_t:
             st.markdown("**🗞️ Noticias Recientes en ESPN Tenis:**")
             for f_nt, hl_t, desc_t in noticias_t:
@@ -1846,7 +1927,7 @@ elif deporte_activo.startswith("🎾"):
 
 
 # ==============================================================================
-# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - ESCUDOS + SOG + KELLY + BAJAS AUTO)
+# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - PORTERO TITULAR/SUPLENTE + B2B + SOG)
 # ==============================================================================
 elif deporte_activo.startswith("🏒"):
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
@@ -1863,12 +1944,26 @@ elif deporte_activo.startswith("🏒"):
     logo_nh_l, fb_nh_l = buscar_logo_equipo(nh_l, mapa_logos_nhl, "#ff6b00")
     logo_nh_v, fb_nh_v = buscar_logo_equipo(nh_v, mapa_logos_nhl, "#38bdf8")
 
+    # Selectores de Portero Titular vs Suplente en NHL
+    st.sidebar.markdown("### 🥅 Porteros Confirmados (Goalies)")
+    g_col1, g_col2 = st.sidebar.columns(2)
+    portero_l = g_col1.selectbox(f"Arco {nh_l[:12]}", ["Titular (1.00x)", "Suplente (+11% GC)"])
+    portero_v = g_col2.selectbox(f"Arco {nh_v[:12]}", ["Titular (1.00x)", "Suplente (+11% GC)"])
+    mult_portero_l = 1.11 if "Suplente" in portero_l else 1.00
+    mult_portero_v = 1.11 if "Suplente" in portero_v else 1.00
+
     usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
     mult_bajas_nl, mult_bajas_nv, pct_baja_nl, pct_baja_nv = renderizar_panel_bajas_y_factor("hockey", "nhl", nh_l, nh_v, f"nhl_{nh_l}_{nh_v}")
 
     with st.spinner(f"Extrayendo boxscores reales de goles y Tiros al Arco (SOG) de {nh_l} y {nh_v}..."):
         df_nhl_l = extraer_ultimos_partidos_nhl_con_sog(mapa_nhl[nh_l], condicion="HOME", n_partidos=5)
         df_nhl_v = extraer_ultimos_partidos_nhl_con_sog(mapa_nhl[nh_v], condicion="AWAY", n_partidos=5)
+
+    # Detectar Back-to-Back (0 días descanso)
+    b2b_nl, msg_b2b_nl = detectar_fatiga_back_to_back(df_nhl_l, "Fecha")
+    b2b_nv, msg_b2b_nv = detectar_fatiga_back_to_back(df_nhl_v, "Fecha")
+    mult_b2b_of_l = 0.92 if b2b_nl else 1.00
+    mult_b2b_of_v = 0.92 if b2b_nv else 1.00
 
     media_nhl_home, media_nhl_away, media_nhl_global = 3.18, 2.92, 3.05
 
@@ -1888,16 +1983,19 @@ elif deporte_activo.startswith("🏒"):
     else:
         gf_nhl_l, gc_nhl_l, gf_nhl_v, gc_nhl_v = gf_l_puro, gc_l_puro, gf_v_puro, gc_v_puro
 
-    gf_nhl_l = gf_nhl_l * mult_bajas_nl
-    gf_nhl_v = gf_nhl_v * mult_bajas_nv
+    # Aplicar Bajas, Portero Suplente y Fatiga B2B
+    gf_nhl_l = gf_nhl_l * mult_bajas_nl * mult_b2b_of_l
+    gf_nhl_v = gf_nhl_v * mult_bajas_nv * mult_b2b_of_v
+    gc_nhl_l = gc_nhl_l * mult_portero_l
+    gc_nhl_v = gc_nhl_v * mult_portero_v
 
     sog_f_l = float(df_nhl_l["Tiros al Arco (SOG) Favor"].dropna().mean()) if ("Tiros al Arco (SOG) Favor" in df_nhl_l and not df_nhl_l["Tiros al Arco (SOG) Favor"].dropna().empty) else 29.5
     sog_c_l = float(df_nhl_l["Tiros al Arco (SOG) Contra"].dropna().mean()) if ("Tiros al Arco (SOG) Contra" in df_nhl_l and not df_nhl_l["Tiros al Arco (SOG) Contra"].dropna().empty) else 28.5
     sog_f_v = float(df_nhl_v["Tiros al Arco (SOG) Favor"].dropna().mean()) if ("Tiros al Arco (SOG) Favor" in df_nhl_v and not df_nhl_v["Tiros al Arco (SOG) Favor"].dropna().empty) else 28.0
     sog_c_v = float(df_nhl_v["Tiros al Arco (SOG) Contra"].dropna().mean()) if ("Tiros al Arco (SOG) Contra" in df_nhl_v and not df_nhl_v["Tiros al Arco (SOG) Contra"].dropna().empty) else 30.0
 
-    sog_esp_loc = round(((sog_f_l + sog_c_v) / 2.0) * (0.6 + 0.4 * mult_bajas_nl), 1)
-    sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv), 1)
+    sog_esp_loc = round(((sog_f_l + sog_c_v) / 2.0) * (0.6 + 0.4 * mult_bajas_nl) * (1.06 if b2b_nv else 1.0), 1)
+    sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv) * (1.06 if b2b_nl else 1.0), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
     lam_nhl_l = max((gf_nhl_l * gc_nhl_v) / media_nhl_global, 0.50)
@@ -1913,12 +2011,23 @@ elif deporte_activo.startswith("🏒"):
     p_ml_l = p_reg_l + (p_emp * (lam_nhl_l / tot_nhl))
     p_ml_v = 1.0 - p_ml_l
 
+    alertas_nhl = []
+    if "Suplente" in portero_l:
+        alertas_nhl.append(f"🥅 Suplente {nh_l}")
+    if "Suplente" in portero_v:
+        alertas_nhl.append(f"🥅 Suplente {nh_v}")
+    if b2b_nl:
+        alertas_nhl.append(f"⚡ B2B {nh_l}")
+    if b2b_nv:
+        alertas_nhl.append(f"⚡ B2B {nh_v}")
+
     renderizar_hero_card_deporte(
         nh_l, nh_v, logo_nh_l, fb_nh_l, logo_nh_v, fb_nh_v,
         "🏒 NHL HOCKEY • LOCAL VS. VISITA",
         f"{lam_nhl_l:.2f}  —  {lam_nhl_v:.2f}",
         f"Goles Esp. (60m): {tot_nhl:.2f} • Tiros al Arco (SOG) Esp.: {sog_totales_esp}",
-        p_ml_l, None, p_ml_v, pct_baja_nl, pct_baja_nv
+        p_ml_l, None, p_ml_v, pct_baja_nl, pct_baja_nv,
+        badge_extra=" | ".join(alertas_nhl)
     )
 
     with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles y Tiros al Arco (SOG) Reales ({nh_l} Local vs {nh_v} Visita)", expanded=False):
@@ -1983,7 +2092,125 @@ elif deporte_activo.startswith("🏒"):
 
 
 # ==============================================================================
-# 4. MÓDULO FÚTBOL AMERICANO (NFL - ESCUDOS + LOCAL/VISITA + KELLY + BAJAS)
+# 4. MÓDULO BALONCESTO (NBA - LOCAL VS VISITA + BACK-TO-BACK + SPREADS)
+# ==============================================================================
+elif deporte_activo.startswith("🏀"):
+    st.sidebar.markdown("### 🏀 1. Equipos NBA")
+    mapa_nba, mapa_logos_nba = obtener_catalogo_equipos_y_logos_espn("basketball", "nba")
+    if not mapa_nba:
+        st.error("No se pudo conectar con la API Oficial de ESPN para NBA.")
+        st.stop()
+
+    lista_nba = sorted(list(mapa_nba.keys()))
+    c_nb1, c_nb2 = st.sidebar.columns(2)
+    nb_l = c_nb1.selectbox("🏠 Local (Home)", lista_nba, index=0)
+    nb_v = c_nb2.selectbox("✈️ Visita (Road)", lista_nba, index=1 if len(lista_nba) > 1 else 0)
+
+    logo_nb_l, fb_nb_l = buscar_logo_equipo(nb_l, mapa_logos_nba, "#ff6b00")
+    logo_nb_v, fb_nb_v = buscar_logo_equipo(nb_v, mapa_logos_nba, "#38bdf8")
+
+    usar_bayes_nba = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NBA (< 6 PJ)", value=False)
+    mult_bajas_nbl, mult_bajas_nbv, pct_b_nbl, pct_b_nbv = renderizar_panel_bajas_y_factor("basketball", "nba", nb_l, nb_v, f"nba_{nb_l}_{nb_v}")
+
+    # Auditoría separada: últimos 5 juegos en CASA del local vs últimos 5 de GIRA del visitante
+    df_nba_l = extraer_ultimos_partidos_reales_espn("basketball", "nba", mapa_nba[nb_l], nb_l, n_partidos=5, condicion_filtro="HOME")
+    df_nba_v = extraer_ultimos_partidos_reales_espn("basketball", "nba", mapa_nba[nb_v], nb_v, n_partidos=5, condicion_filtro="AWAY")
+
+    b2b_nbl, msg_b2b_nbl = detectar_fatiga_back_to_back(df_nba_l, "Fecha")
+    b2b_nbv, msg_b2b_nbv = detectar_fatiga_back_to_back(df_nba_v, "Fecha")
+    pen_b2b_nba_l = -3.5 if b2b_nbl else 0.0
+    pen_b2b_nba_v = -3.5 if b2b_nbv else 0.0
+
+    media_nba_home, media_nba_away = 114.5, 111.5
+    pf_l_puro = float(df_nba_l["Puntos/Carreras a Favor"].mean()) if not df_nba_l.empty else media_nba_home
+    pa_l_puro = float(df_nba_l["Puntos/Carreras en Contra"].mean()) if not df_nba_l.empty else media_nba_away
+    pf_v_puro = float(df_nba_v["Puntos/Carreras a Favor"].mean()) if not df_nba_v.empty else media_nba_away
+    pa_v_puro = float(df_nba_v["Puntos/Carreras en Contra"].mean()) if not df_nba_v.empty else media_nba_home
+
+    if usar_bayes_nba:
+        w_nl = min(len(df_nba_l) / 6.0, 1.0)
+        w_nv = min(len(df_nba_v) / 6.0, 1.0)
+        pf_l = (w_nl * pf_l_puro) + ((1.0 - w_nl) * media_nba_home)
+        pa_l = (w_nl * pa_l_puro) + ((1.0 - w_nl) * media_nba_away)
+        pf_v = (w_nv * pf_v_puro) + ((1.0 - w_nv) * media_nba_away)
+        pa_v = (w_nv * pa_v_puro) + ((1.0 - w_nv) * media_nba_home)
+    else:
+        pf_l, pa_l, pf_v, pa_v = pf_l_puro, pa_l_puro, pf_v_puro, pa_v_puro
+
+    pf_l = (pf_l * mult_bajas_nbl) + pen_b2b_nba_l
+    pf_v = (pf_v * mult_bajas_nbv) + pen_b2b_nba_v
+
+    proy_l = (pf_l + pa_v) / 2.0
+    proy_v = (pf_v + pa_l) / 2.0
+    tot_nba = proy_l + proy_v
+    spread_esp_nba = proy_l - proy_v
+    p_ml_l = float(1.0 - norm.cdf(0.0, loc=spread_esp_nba, scale=11.8))
+    p_ml_v = 1.0 - p_ml_l
+
+    alertas_nba = []
+    if b2b_nbl:
+        alertas_nba.append(f"⚡ B2B {nb_l} (-3.5 pts)")
+    if b2b_nbv:
+        alertas_nba.append(f"⚡ B2B {nb_v} (-3.5 pts)")
+
+    renderizar_hero_card_deporte(
+        nb_l, nb_v, logo_nb_l, fb_nb_l, logo_nb_v, fb_nb_v,
+        "🏀 NBA BASKETBALL • LOCAL VS. VISITA",
+        f"{proy_l:.1f}  —  {proy_v:.1f}",
+        f"Total Esperado: {tot_nba:.1f} pts • Spread Proyectado: {spread_esp_nba:+.1f}",
+        p_ml_l, None, p_ml_v, pct_b_nbl, pct_b_nbv,
+        badge_extra=" | ".join(alertas_nba)
+    )
+
+    with st.expander(f"📋 TABLA DE AUDITORÍA NBA: Últimos partidos reales de {nb_l} en CASA y {nb_v} de VISITA", expanded=False):
+        st.success("✅ Datos extraídos en vivo desde ESPN Schedule filtrando estrictamente por Localía (`HOME`) y Gira (`AWAY`).")
+        st.markdown(f"**🏠 Últimos {len(df_nba_l)} partidos de {nb_l} jugando en CASA (Local):**")
+        if not df_nba_l.empty:
+            st.dataframe(df_nba_l.rename(columns={"Puntos/Carreras a Favor": "Puntos Anotados", "Puntos/Carreras en Contra": "Puntos Recibidos", "Total Marcador": "Total Puntos"}), use_container_width=True, hide_index=True)
+        st.markdown(f"**✈️ Últimos {len(df_nba_v)} partidos de {nb_v} jugando de GIRA (Visita):**")
+        if not df_nba_v.empty:
+            st.dataframe(df_nba_v.rename(columns={"Puntos/Carreras a Favor": "Puntos Anotados", "Puntos/Carreras en Contra": "Puntos Recibidos", "Total Marcador": "Total Puntos"}), use_container_width=True, hide_index=True)
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🟠 2. Cuotas Betano NBA (ML, Spread & Total)")
+    c_nba_l = st.sidebar.number_input(f"Moneyline Gana {nb_l}", 1.01, 25.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
+    c_nba_v = st.sidebar.number_input(f"Moneyline Gana {nb_v}", 1.01, 25.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
+    spread_linea_nba = st.sidebar.number_input(f"Hándicap / Spread {nb_l} (ej. -4.5 o +3.5)", -25.5, 25.5, round(-spread_esp_nba*2)/2, 0.5)
+    c_sp_nba_l = st.sidebar.number_input(f"Cuota {nb_l} ({spread_linea_nba:+.1f})", 1.01, 15.0, 1.90, 0.05)
+    c_sp_nba_v = st.sidebar.number_input(f"Cuota {nb_v} ({-spread_linea_nba:+.1f})", 1.01, 15.0, 1.90, 0.05)
+    linea_nba = st.sidebar.number_input("Línea Total Puntos NBA", 180.5, 265.5, round(tot_nba*2)/2, 0.5)
+    c_ov_nba = st.sidebar.number_input(f"Cuota Más de {linea_nba} (Over)", 1.01, 15.0, 1.90, 0.05)
+    c_un_nba = st.sidebar.number_input(f"Cuota Menos de {linea_nba} (Under)", 1.01, 15.0, 1.90, 0.05)
+
+    p_sp_nba_l = float(1.0 - norm.cdf(-spread_linea_nba, loc=spread_esp_nba, scale=11.8))
+    p_sp_nba_v = 1.0 - p_sp_nba_l
+    p_ov_nba = float(1.0 - norm.cdf(linea_nba, loc=tot_nba, scale=13.5))
+
+    nk1, nk2, nk3, nk4 = st.columns(4)
+    nk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total: {tot_nba:.1f} pts")
+    nk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%")
+    nk3.metric("⚖️ Hándicap (Spread)", f"{nb_l} {spread_linea_nba:+.1f}: {p_sp_nba_l*100:.1f}%", f"Diferencial Esp.: {spread_esp_nba:+.1f}")
+    nk4.metric("📈 Prob. Over / Under", f"{p_ov_nba*100:.1f}% Over {linea_nba}", f"{(1-p_ov_nba)*100:.1f}% Under {linea_nba}")
+
+    CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
+    btab1, btab2 = st.tabs(["🎯 1. Mercados NBA (ML, Spread & Puntos)", "🔴 2. Radar En Vivo"])
+    with btab1:
+        m_nba = [
+            (f"Moneyline: Gana {nb_l}", p_ml_l, c_nba_l),
+            (f"Moneyline: Gana {nb_v}", p_ml_v, c_nba_v),
+            (f"Hándicap: {nb_l} ({spread_linea_nba:+.1f})", p_sp_nba_l, c_sp_nba_l),
+            (f"Hándicap: {nb_v} ({-spread_linea_nba:+.1f})", p_sp_nba_v, c_sp_nba_v),
+            (f"Total: Más de {linea_nba} Puntos (Over)", p_ov_nba, c_ov_nba),
+            (f"Total: Menos de {linea_nba} Puntos (Under)", 1.0 - p_ov_nba, c_un_nba)
+        ]
+        df_nba_m = construir_tabla_mercados_kelly(m_nba, "Mercado NBA", banca_usuario, fraccion_kelly_val, min_prob_filtro, min_edge_filtro)
+        st.dataframe(df_nba_m.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
+    with btab2:
+        mostrar_cancha_calor(nb_l, nb_v, p_ml_l*100, p_ml_v*100, 1.1, 1.0, "nba")
+
+
+# ==============================================================================
+# 5. MÓDULO FÚTBOL AMERICANO (NFL - LOCAL/VISITA + CLIMA + SPREAD + BAJAS)
 # ==============================================================================
 elif deporte_activo.startswith("🏈"):
     st.sidebar.markdown("### 🏈 1. Equipos NFL")
@@ -1999,6 +2226,16 @@ elif deporte_activo.startswith("🏈"):
 
     logo_nf_l, fb_nf_l = buscar_logo_equipo(nf_l, mapa_logos_nfl, "#ff6b00")
     logo_nf_v, fb_nf_v = buscar_logo_equipo(nf_v, mapa_logos_nfl, "#38bdf8")
+
+    clima_nfl = st.sidebar.selectbox(
+        "🌦️ Condición Climática / Estadio:",
+        [
+            "🏟️ Domo / Clima Normal (0.0 pts)",
+            "💨 Viento Fuerte > 25 km/h o Lluvia (-4.5 pts)",
+            "❄️ Nieve / Frío Extremo (-6.0 pts)"
+        ]
+    )
+    ajuste_clima_nfl = -4.5 if "Viento" in clima_nfl else (-6.0 if "Nieve" in clima_nfl else 0.0)
 
     usar_bayes_nfl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NFL (< 6 PJ)", value=True)
     mult_bajas_nfl_l, mult_bajas_nfl_v, pct_b_nfl_l, pct_b_nfl_v = renderizar_panel_bajas_y_factor("football", "nfl", nf_l, nf_v, f"nfl_{nf_l}_{nf_v}")
@@ -2024,21 +2261,23 @@ elif deporte_activo.startswith("🏈"):
     else:
         pf_l, pa_l, pf_v, pa_v = pf_l_puro, pa_l_puro, pf_v_puro, pa_v_puro
 
-    pf_l = pf_l * mult_bajas_nfl_l
-    pf_v = pf_v * mult_bajas_nfl_v
+    pf_l = (pf_l * mult_bajas_nfl_l) + (ajuste_clima_nfl / 2.0)
+    pf_v = (pf_v * mult_bajas_nfl_v) + (ajuste_clima_nfl / 2.0)
 
-    proy_l = (pf_l + pa_v) / 2.0
-    proy_v = (pf_v + pa_l) / 2.0
+    proy_l = max((pf_l + pa_v) / 2.0, 6.0)
+    proy_v = max((pf_v + pa_l) / 2.0, 6.0)
     tot_nfl = proy_l + proy_v
-    p_ml_l = float(1.0 - norm.cdf(0.0, loc=proy_l - proy_v, scale=13.2))
+    spread_esp_nfl = proy_l - proy_v
+    p_ml_l = float(1.0 - norm.cdf(0.0, loc=spread_esp_nfl, scale=13.2))
     p_ml_v = 1.0 - p_ml_l
 
     renderizar_hero_card_deporte(
         nf_l, nf_v, logo_nf_l, fb_nf_l, logo_nf_v, fb_nf_v,
         "🏈 NFL FÚTBOL AMERICANO • LOCAL VS. VISITA",
         f"{proy_l:.1f}  —  {proy_v:.1f}",
-        f"Total Esperado: {tot_nfl:.1f} puntos • Spread Proyectado: {proy_l - proy_v:+.1f}",
-        p_ml_l, None, p_ml_v, pct_b_nfl_l, pct_b_nfl_v
+        f"Total Esperado: {tot_nfl:.1f} puntos • Spread Proyectado: {spread_esp_nfl:+.1f}",
+        p_ml_l, None, p_ml_v, pct_b_nfl_l, pct_b_nfl_v,
+        badge_extra=f"🌦️ Ajuste Clima: {ajuste_clima_nfl:+.1f} pts" if ajuste_clima_nfl < 0 else ""
     )
 
     with st.expander(f"📋 TABLA DE AUDITORÍA NFL: Últimos partidos reales de {nf_l} como LOCAL y {nf_v} como VISITANTE", expanded=False):
@@ -2051,26 +2290,34 @@ elif deporte_activo.startswith("🏈"):
             st.dataframe(df_nfl_v.rename(columns={"Puntos/Carreras a Favor": "Puntos Anotados", "Puntos/Carreras en Contra": "Puntos Recibidos", "Total Marcador": "Total Puntos"}), use_container_width=True, hide_index=True)
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🟠 2. Cuotas Betano NFL")
+    st.sidebar.markdown("### 🟠 2. Cuotas Betano NFL (ML, Spread & Total)")
     c_nfl_l = st.sidebar.number_input(f"Moneyline Gana {nf_l}", 1.01, 25.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
     c_nfl_v = st.sidebar.number_input(f"Moneyline Gana {nf_v}", 1.01, 25.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
+    spread_linea_nfl = st.sidebar.number_input(f"Hándicap / Spread {nf_l} (ej. -3.5 o +6.5)", -24.5, 24.5, round(-spread_esp_nfl*2)/2, 0.5)
+    c_sp_nfl_l = st.sidebar.number_input(f"Cuota {nf_l} ({spread_linea_nfl:+.1f})", 1.01, 15.0, 1.90, 0.05)
+    c_sp_nfl_v = st.sidebar.number_input(f"Cuota {nf_v} ({-spread_linea_nfl:+.1f})", 1.01, 15.0, 1.90, 0.05)
     linea_nfl = st.sidebar.number_input("Línea Puntos Totales NFL", 30.5, 68.5, round(tot_nfl*2)/2, 0.5)
     c_ov_nfl = st.sidebar.number_input(f"Cuota Más de {linea_nfl} (Over)", 1.01, 15.0, 1.90, 0.05)
     c_un_nfl = st.sidebar.number_input(f"Cuota Menos de {linea_nfl} (Under)", 1.01, 15.0, 1.90, 0.05)
 
+    p_sp_nfl_l = float(1.0 - norm.cdf(-spread_linea_nfl, loc=spread_esp_nfl, scale=13.2))
+    p_sp_nfl_v = 1.0 - p_sp_nfl_l
     p_ov_nfl = float(1.0 - norm.cdf(linea_nfl, loc=tot_nfl, scale=14.2))
 
-    fk1, fk2, fk3 = st.columns(3)
-    fk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total Esperado: {tot_nfl:.1f} pts")
-    fk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Diferencial Esp.: {proy_l - proy_v:+.1f}")
-    fk3.metric("📈 Prob. Over / Under", f"{p_ov_nfl*100:.1f}% Over {linea_nfl}", f"{(1-p_ov_nfl)*100:.1f}% Under {linea_nfl}")
+    fk1, fk2, fk3, fk4 = st.columns(4)
+    fk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total: {tot_nfl:.1f} pts")
+    fk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%")
+    fk3.metric("⚖️ Hándicap (Spread)", f"{nf_l} {spread_linea_nfl:+.1f}: {p_sp_nfl_l*100:.1f}%", f"Diferencial Esp.: {spread_esp_nfl:+.1f}")
+    fk4.metric("📈 Prob. Over / Under", f"{p_ov_nfl*100:.1f}% Over {linea_nfl}", f"{(1-p_ov_nfl)*100:.1f}% Under {linea_nfl}")
 
     CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
-    ftab1, ftab2 = st.tabs(["🎯 1. Mercados NFL (Betano)", "🔴 2. Radar En Vivo (In-Play)"])
+    ftab1, ftab2 = st.tabs(["🎯 1. Mercados NFL (ML, Spread & Puntos)", "🔴 2. Radar En Vivo (In-Play)"])
     with ftab1:
         m_nfl = [
             (f"Moneyline: Gana {nf_l}", p_ml_l, c_nfl_l),
             (f"Moneyline: Gana {nf_v}", p_ml_v, c_nfl_v),
+            (f"Hándicap: {nf_l} ({spread_linea_nfl:+.1f})", p_sp_nfl_l, c_sp_nfl_l),
+            (f"Hándicap: {nf_v} ({-spread_linea_nfl:+.1f})", p_sp_nfl_v, c_sp_nfl_v),
             (f"Total: Más de {linea_nfl} Puntos (Over)", p_ov_nfl, c_ov_nfl),
             (f"Total: Menos de {linea_nfl} Puntos (Under)", 1.0 - p_ov_nfl, c_un_nfl)
         ]
@@ -2081,13 +2328,10 @@ elif deporte_activo.startswith("🏈"):
 
 
 # ==============================================================================
-# 5. MÓDULOS NBA (🏀) Y MLB (⚾) CON ESCUDOS OFICIALES, KELLY Y BAJAS AUTO
+# 6. MÓDULO BÉISBOL (MLB - ESCUDOS OFICIALES, KELLY Y BAJAS AUTO)
 # ==============================================================================
 else:
-    if deporte_activo.startswith("🏀"):
-        sport_p, league_c, nom_dep, sigma_m, cancha_k = "basketball", "nba", "NBA Basketball", 11.8, "nba"
-    else:
-        sport_p, league_c, nom_dep, sigma_m, cancha_k = "baseball", "mlb", "MLB Béisbol", 3.2, "mlb"
+    sport_p, league_c, nom_dep, sigma_m, cancha_k = "baseball", "mlb", "MLB Béisbol", 3.2, "mlb"
 
     st.sidebar.markdown(f"### 🏆 1. Equipos {nom_dep}")
     mapa_equipos_espn, mapa_logos_usa = obtener_catalogo_equipos_y_logos_espn(sport_p, league_c)
@@ -2107,7 +2351,7 @@ else:
     df_real_l = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_l], u_l, n_partidos=8, condicion_filtro="ALL")
     df_real_v = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_v], u_v, n_partidos=8, condicion_filtro="ALL")
 
-    def_pts = 112.0 if sport_p == "basketball" else 4.5
+    def_pts = 4.5
     pf_l = (float(df_real_l["Puntos/Carreras a Favor"].mean()) if not df_real_l.empty else def_pts) * mult_bajas_ul
     pa_l = float(df_real_l["Puntos/Carreras en Contra"].mean()) if not df_real_l.empty else def_pts
     pf_v = (float(df_real_v["Puntos/Carreras a Favor"].mean()) if not df_real_v.empty else def_pts) * mult_bajas_uv
@@ -2123,7 +2367,7 @@ else:
         u_l, u_v, logo_u_l, fb_u_l, logo_u_v, fb_u_v,
         nom_dep.upper(),
         f"{proy_l:.1f}  —  {proy_v:.1f}",
-        f"Total Esperado: {tot_esp:.1f} puntos/carreras",
+        f"Total Esperado: {tot_esp:.1f} carreras",
         p_ml_l, None, p_ml_v, pct_b_ul, pct_b_uv
     )
 
@@ -2140,7 +2384,7 @@ else:
     st.sidebar.markdown(f"### 🟠 2. Cuotas Betano {nom_dep}")
     c_ul = st.sidebar.number_input(f"Gana {u_l}", 1.01, 25.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
     c_uv = st.sidebar.number_input(f"Gana {u_v}", 1.01, 25.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
-    linea_u = st.sidebar.number_input("Línea Total Puntos/Carreras", 3.5, 275.5, round(tot_esp*2)/2, 0.5)
+    linea_u = st.sidebar.number_input("Línea Total Carreras", 3.5, 25.5, round(tot_esp*2)/2, 0.5)
     c_ov_u = st.sidebar.number_input(f"Cuota Over {linea_u}", 1.01, 15.0, 1.90, 0.05)
     c_un_u = st.sidebar.number_input(f"Cuota Under {linea_u}", 1.01, 15.0, 1.90, 0.05)
 
