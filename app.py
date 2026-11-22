@@ -7,11 +7,11 @@ import requests
 import urllib.parse
 import io
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 16.1 | Smart Bitácora & Market ROI Suite",
+    page_title="Pro Bet Analyzer 16.2 | Temporal ROI, Cash Out & Analytics",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -24,7 +24,7 @@ COLS_BITACORA = [
     "Partido 2", "Mercado 2", "Cuota 2",
     "Partido 3", "Mercado 3", "Cuota 3",
     "Cuota Total", "Cuota Cierre", "CLV (%)",
-    "Stake ($)", "Estado", "Retorno ($)", "Beneficio Neto ($)"
+    "Stake ($)", "Estado", "Monto Cash Out ($)", "Retorno ($)", "Beneficio Neto ($)"
 ]
 if "bitacora_apuestas" not in st.session_state:
     st.session_state["bitacora_apuestas"] = pd.DataFrame(columns=COLS_BITACORA)
@@ -44,14 +44,12 @@ html, body, [class*="css"] {
     color: #f4f4f5;
 }
 
-/* ETIQUETAS DE TODOS LOS CONTROLES EN BLANCO NÍTIDO (SOLUCIONA TEXTO TENUE EN BITÁCORA) */
-label, .stSelectbox label, .stNumberInput label, .stTextInput label, .stSlider label, .stRadio label {
+label, .stSelectbox label, .stNumberInput label, .stTextInput label, .stSlider label, .stRadio label, .stDateInput label {
     color: #f4f4f5 !important;
     font-weight: 700 !important;
 }
 
-/* INPUTS Y SELECTBOXES LEGIBLES EN TODA LA APP */
-div[data-baseweb="select"] > div, input[type="text"], input[type="number"] {
+div[data-baseweb="select"] > div, input[type="text"], input[type="number"], div[data-testid="stDateInput"] input {
     background-color: #ffffff !important;
     color: #111827 !important;
     font-weight: 700 !important;
@@ -60,7 +58,6 @@ div[data-baseweb="select"] span, div[data-baseweb="select"] div {
     color: #111827 !important;
 }
 
-/* SIDEBAR */
 section[data-testid="stSidebar"] {
     background-color: #121216;
     border-right: 1px solid rgba(255, 255, 255, 0.12);
@@ -77,7 +74,6 @@ code {
     font-weight: 700 !important;
 }
 
-/* ALERTAS NATIVAS */
 div[data-testid="stAlert"] p,
 div[data-testid="stAlert"] span,
 div[data-testid="stAlert"] strong {
@@ -291,8 +287,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 16.1 <span style="color:#ff8c00;">| SMART BITÁCORA & MARKET ROI</span></h1>
-<p>Autocompletado de Clubes, Tenistas y Mercados • Rentabilidad por Mercado y Deporte • Criterio Kelly & Dixon-Coles</p>
+<h1>🏆 PRO BET ANALYZER 16.2 <span style="color:#ff8c00;">| TEMPORAL ROI, CASH OUT & ANALYTICS</span></h1>
+<p>Bitácora con Fecha, Cash Out y Evolución Día / Semana / Mes • Gráficos de Rentabilidad • Kelly & Modelos Cuantitativos</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1116,13 +1112,7 @@ def obtener_rankings_oficiales_espn_tenis(circuito):
 
 @st.cache_data(ttl=3600)
 def obtener_catalogo_maestro_entidades():
-    """
-    Reúne todos los clubes y jugadores de todos los deportes del sistema para
-    alimentar el autocompletado de la Bitácora de Auditoría.
-    """
     catalogo = {}
-
-    # 1. Fútbol (15 ligas + selecciones UEFA)
     urls_fut_cat = [
         "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
         "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
@@ -1154,13 +1144,11 @@ def obtener_catalogo_maestro_entidades():
             pass
     catalogo["⚽ Fútbol"] = sorted(list(clubes_fut))
 
-    # 2. Tenis ATP y WTA
     cat_atp = obtener_rankings_oficiales_espn_tenis("ATP (Masculino)")
     cat_wta = obtener_rankings_oficiales_espn_tenis("WTA (Femenino)")
     tenistas_todos = sorted(list(set(list(cat_atp.keys()) + list(cat_wta.keys()) + list(ACES_BASE_AUDITADOS.keys()))))
     catalogo["🎾 Tenis (ATP / WTA)"] = tenistas_todos
 
-    # 3. NHL, NBA, NFL, MLB
     m_nhl, _ = obtener_catalogo_equipos_nhl()
     catalogo["🏒 Hockey (NHL)"] = sorted(list(m_nhl.keys())) if m_nhl else ["New York Rangers", "Boston Bruins", "Edmonton Oilers"]
 
@@ -1322,10 +1310,9 @@ deporte_activo = st.sidebar.selectbox("Elige la disciplina a analizar:", opcione
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# BITÁCORA INTELIGENTE DE APUESTAS (AUTOCOMPLETADO + RENTABILIDAD POR MERCADO)
+# BITÁCORA INTELIGENTE DE APUESTAS (FECHA + CASH OUT + GRÁFICOS DÍA/SEMANA/MES)
 # ==============================================================================
 def renderizar_selector_pata_bitacora(num_pata, catalogo_entidades, es_obligatorio=True):
-    """Renderiza selectores con autocompletado de Deporte, Contendiente A, Contendiente B, Mercado y Cuotas."""
     st.markdown(f"**{num_pata}️⃣ Selección {num_pata} {'(Obligatoria)' if es_obligatorio else ''}:**")
     c1, c2, c3, c4, c5, c6 = st.columns([1.15, 1.25, 1.25, 1.65, 0.85, 0.85])
     dep_sel = c1.selectbox("Deporte", list(MERCADOS_SISTEMA.keys()), key=f"bit_dep_{num_pata}")
@@ -1339,15 +1326,24 @@ def renderizar_selector_pata_bitacora(num_pata, catalogo_entidades, es_obligator
     partido_str = f"{ent_a} vs {ent_b}"
     return dep_sel, partido_str, merc_sel, cuota_v, cierre_v
 
-with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (AUTOCOMPLETADO + RENTABILIDAD POR MERCADO Y DEPORTE)", expanded=False):
+with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y RENDIMIENTO DÍA / SEMANA / MES)", expanded=False):
     catalogo_global = obtener_catalogo_maestro_entidades()
     df_bit = st.session_state["bitacora_apuestas"]
 
-    st.markdown("**➕ Registrar Nueva Operación (Escribe las primeras letras en las listas para filtrar clubes o tenistas):**")
-    b_col1, b_col2, b_col3 = st.columns([1.3, 1.0, 1.0])
-    tipo_apuesta_reg = b_col1.selectbox("Tipo de Ticket", ["Simple (1 Partido)", "Combinada (2 Partidos)", "Combinada (3 Partidos)"])
-    stake_reg = b_col2.number_input("Monto Apostado ($ USD)", min_value=0.10, max_value=100000.0, value=round(max(banca_usuario * 0.05, 1.0), 2), step=1.0)
-    estado_reg = b_col3.selectbox("Estado del Ticket", ["⏳ Pendiente", "✅ Ganada", "❌ Perdida"])
+    st.markdown("**➕ Registrar Nueva Operación:**")
+    b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns([1.0, 1.15, 0.95, 1.05, 0.95])
+    fecha_ticket_reg = b_col1.date_input("📅 Fecha Apuesta", value=date.today(), key="bit_fecha_reg")
+    tipo_apuesta_reg = b_col2.selectbox("Tipo de Ticket", ["Simple (1 Partido)", "Combinada (2 Partidos)", "Combinada (3 Partidos)"])
+    stake_reg = b_col3.number_input("Stake ($ USD)", min_value=0.10, max_value=100000.0, value=round(max(banca_usuario * 0.05, 1.0), 2), step=1.0)
+    estado_reg = b_col4.selectbox("Estado Ticket", ["⏳ Pendiente", "✅ Ganada", "❌ Perdida", "💰 Cash Out"])
+    monto_cashout_reg = b_col5.number_input(
+        "Monto Cash Out ($)",
+        min_value=0.0, max_value=1000000.0,
+        value=round(stake_reg * 1.25, 2) if "Cash Out" in estado_reg else 0.0,
+        step=0.50,
+        disabled=("Cash Out" not in estado_reg),
+        help="Habilitado al elegir '💰 Cash Out'. Ingresa el monto exacto cobrado al cerrar antes."
+    )
 
     # Pata 1
     dep1, part1, merc1, cuota1_val, cierre1_val = renderizar_selector_pata_bitacora(1, catalogo_global, True)
@@ -1367,27 +1363,33 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (AUTOCOMPLETADO + RENTA
     cuota_total_ticket = round(cuota1_val * cuota2_val * cuota3_val, 2)
     cierre_total_ticket = round(cierre1_val * cierre2_val * cierre3_val, 2)
     clv_ticket = round(((cuota_total_ticket / max(cierre_total_ticket, 1.01)) - 1.0) * 100.0, 2)
-    prob_imp_modelo = round((1.0 / max(cuota_total_ticket, 1.01)) * 100.0, 1)
 
     deps_usados = list(dict.fromkeys([d for d in [dep1, dep2, dep3] if d != "-"]))
     deporte_principal_str = deps_usados[0] if len(deps_usados) == 1 else "🔀 Mixto (" + " + ".join([d.split()[1] for d in deps_usados]) + ")"
 
-    st.caption(f"📊 **Resumen Previo del Ticket:** Disciplina: **`{deporte_principal_str}`** | Cuota Total: **`{cuota_total_ticket:.2f}`** | Cuota Cierre: **`{cierre_total_ticket:.2f}`** | CLV: **`{clv_ticket:+.2f}%`** | Ganancia Potencial: **`+${stake_reg * (cuota_total_ticket - 1.0):.2f}`**")
+    st.caption(f"📊 **Resumen Previo:** Fecha: **`{fecha_ticket_reg}`** | Disciplina: **`{deporte_principal_str}`** | Cuota Total: **`{cuota_total_ticket:.2f}`** | CLV: **`{clv_ticket:+.2f}%`** | Ganancia Potencial: **`+${stake_reg * (cuota_total_ticket - 1.0):.2f}`**")
 
     if st.button("💾 Guardar Apuesta en Bitácora", type="primary"):
         if "✅" in estado_reg:
             retorno_val = round(stake_reg * cuota_total_ticket, 2)
             neto_val = round(retorno_val - stake_reg, 2)
+            co_val = 0.0
+        elif "💰" in estado_reg:
+            retorno_val = round(monto_cashout_reg, 2)
+            neto_val = round(retorno_val - stake_reg, 2)
+            co_val = round(monto_cashout_reg, 2)
         elif "❌" in estado_reg:
             retorno_val = 0.0
             neto_val = round(-stake_reg, 2)
+            co_val = 0.0
         else:
             retorno_val = 0.0
             neto_val = 0.0
+            co_val = 0.0
 
         nueva_fila = pd.DataFrame([{
             "ID": len(df_bit) + 1,
-            "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "Fecha": fecha_ticket_reg.strftime("%Y-%m-%d"),
             "Tipo Ticket": tipo_apuesta_reg,
             "Deporte Principal": deporte_principal_str,
             "Partido 1": part1,
@@ -1404,64 +1406,122 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (AUTOCOMPLETADO + RENTA
             "CLV (%)": clv_ticket,
             "Stake ($)": stake_reg,
             "Estado": estado_reg,
+            "Monto Cash Out ($)": co_val,
             "Retorno ($)": retorno_val,
             "Beneficio Neto ($)": neto_val
         }])
         st.session_state["bitacora_apuestas"] = pd.concat([df_bit, nueva_fila], ignore_index=True)
-        st.success("✅ Ticket guardado y contabilizado en tus estadísticas de rentabilidad.")
+        st.success("✅ Ticket registrado correctamente en tu Bitácora.")
 
     df_bit_act = st.session_state["bitacora_apuestas"]
     if not df_bit_act.empty:
         st.markdown("---")
-        # Gestor rápido para liquidar tickets pendientes sin volver a digitar
+        # Gestor rápido para liquidar tickets pendientes (incluye Ganada, Perdida y Cash Out con monto)
         pendientes_df = df_bit_act[df_bit_act["Estado"] == "⏳ Pendiente"]
         if not pendientes_df.empty:
-            st.markdown("**⏱️ Actualizar Estado de Tickets Pendientes:**")
-            u_c1, u_c2, u_c3 = st.columns([2.2, 1.2, 1.0])
-            opciones_pend = [f"ID #{int(r['ID'])} | {r['Partido 1']} ({r['Mercado 1']}) - Cuota {r['Cuota Total']}" for _, r in pendientes_df.iterrows()]
+            st.markdown("**⏱️ Cerrar / Liquidar Ticket Pendiente (Ganada, Perdida o Cash Out):**")
+            u_c1, u_c2, u_c3, u_c4 = st.columns([2.0, 1.1, 1.0, 0.9])
+            opciones_pend = [f"ID #{int(r['ID'])} | [{r['Fecha']}] {r['Partido 1']} - Stake ${r['Stake ($)']}" for _, r in pendientes_df.iterrows()]
             ticket_upd_sel = u_c1.selectbox("Selecciona Ticket Pendiente", opciones_pend, key="sel_upd_pend")
-            nuevo_estado_upd = u_c2.selectbox("Nuevo Resultado", ["✅ Ganada", "❌ Perdida"], key="est_upd_pend")
-            if u_c3.button("✅ Liquidar Ticket", key="btn_upd_pend"):
+            nuevo_estado_upd = u_c2.selectbox("Resultado Final", ["✅ Ganada", "❌ Perdida", "💰 Cash Out"], key="est_upd_pend")
+            monto_co_upd = u_c3.number_input(
+                "Monto Cash Out ($)",
+                min_value=0.0, max_value=1000000.0, value=0.0, step=0.50,
+                disabled=("Cash Out" not in nuevo_estado_upd),
+                key="co_upd_pend"
+            )
+            if u_c4.button("✅ Liquidar", key="btn_upd_pend"):
                 id_target = int(ticket_upd_sel.split("|")[0].replace("ID #", "").strip())
                 idx_row = df_bit_act[df_bit_act["ID"] == id_target].index[0]
                 stk = float(df_bit_act.at[idx_row, "Stake ($)"])
                 cuo = float(df_bit_act.at[idx_row, "Cuota Total"])
                 df_bit_act.at[idx_row, "Estado"] = nuevo_estado_upd
                 if "✅" in nuevo_estado_upd:
+                    df_bit_act.at[idx_row, "Monto Cash Out ($)"] = 0.0
                     df_bit_act.at[idx_row, "Retorno ($)"] = round(stk * cuo, 2)
                     df_bit_act.at[idx_row, "Beneficio Neto ($)"] = round((stk * cuo) - stk, 2)
+                elif "💰" in nuevo_estado_upd:
+                    df_bit_act.at[idx_row, "Monto Cash Out ($)"] = round(monto_co_upd, 2)
+                    df_bit_act.at[idx_row, "Retorno ($)"] = round(monto_co_upd, 2)
+                    df_bit_act.at[idx_row, "Beneficio Neto ($)"] = round(monto_co_upd - stk, 2)
                 else:
+                    df_bit_act.at[idx_row, "Monto Cash Out ($)"] = 0.0
                     df_bit_act.at[idx_row, "Retorno ($)"] = 0.0
                     df_bit_act.at[idx_row, "Beneficio Neto ($)"] = round(-stk, 2)
                 st.session_state["bitacora_apuestas"] = df_bit_act
                 st.rerun()
 
-        cerradas = df_bit_act[df_bit_act["Estado"].isin(["✅ Ganada", "❌ Perdida"])]
+        cerradas = df_bit_act[df_bit_act["Estado"].isin(["✅ Ganada", "❌ Perdida", "💰 Cash Out"])].copy()
         total_apostado = float(cerradas["Stake ($)"].sum()) if not cerradas.empty else 0.0
         beneficio_total = float(cerradas["Beneficio Neto ($)"].sum()) if not cerradas.empty else 0.0
         yield_pct = (beneficio_total / total_apostado * 100.0) if total_apostado > 0 else 0.0
-        ganadas_cnt = int((cerradas["Estado"] == "✅ Ganada").sum())
-        win_rate = (ganadas_cnt / len(cerradas) * 100.0) if len(cerradas) > 0 else 0.0
+        positivas_cnt = int(((cerradas["Estado"] == "✅ Ganada") | ((cerradas["Estado"] == "💰 Cash Out") & (cerradas["Beneficio Neto ($)"] > 0))).sum()) if not cerradas.empty else 0
+        win_rate = (positivas_cnt / len(cerradas) * 100.0) if len(cerradas) > 0 else 0.0
         clv_medio = float(df_bit_act["CLV (%)"].mean())
 
         bm1, bm2, bm3, bm4 = st.columns(4)
         bm1.metric("💵 Beneficio Neto Global", f"${beneficio_total:+.2f}", f"Banca Actualizada: ${banca_usuario + beneficio_total:.2f}")
         bm2.metric("📈 Yield / ROI Global (%)", f"{yield_pct:+.2f}%", f"Volumen Cerrado: ${total_apostado:.2f}")
-        bm3.metric("🎯 Efectividad (Win Rate)", f"{win_rate:.1f}%", f"{ganadas_cnt}/{len(cerradas)} tickets cerrados")
+        bm3.metric("🎯 Tickets en Verde (%)", f"{win_rate:.1f}%", f"{positivas_cnt}/{len(cerradas)} tickets positivos")
         bm4.metric("⚡ CLV Promedio", f"{clv_medio:+.2f}%", "Ventaja vs cierre Betano")
 
-        # --- ANALÍTICA DE RENTABILIDAD POR MERCADO Y POR DEPORTE ---
+        # --- ANÁLISIS TEMPORAL (POR DÍA, POR SEMANA, POR MES) + GRÁFICOS ---
         if not cerradas.empty:
+            st.markdown("### 📈 Evolución Temporal de Rendimiento (Por Día, Semana y Mes)")
+            cerradas["Fecha_dt"] = pd.to_datetime(cerradas["Fecha"], errors="coerce")
+            cerradas = cerradas.dropna(subset=["Fecha_dt"]).sort_values("Fecha_dt")
+
+            granularidad = st.radio(
+                "Selecciona la vista temporal:",
+                ["📅 Por Día", "📆 Por Semana", "🗓️ Por Mes"],
+                horizontal=True,
+                key="rad_gran_bit"
+            )
+            if "Día" in granularidad:
+                cerradas["Período"] = cerradas["Fecha_dt"].dt.strftime("%Y-%m-%d")
+            elif "Semana" in granularidad:
+                cerradas["Período"] = cerradas["Fecha_dt"].dt.to_period("W").apply(lambda p: f"Sem {p.start_time.strftime('%Y-%m-%d')}")
+            else:
+                cerradas["Período"] = cerradas["Fecha_dt"].dt.strftime("%Y-%m")
+
+            df_temp = cerradas.groupby("Período", sort=True).agg(
+                Tickets=("ID", "count"),
+                Positivos=("Beneficio Neto ($)", lambda x: int((x > 0).sum())),
+                Invertido=("Stake ($)", "sum"),
+                Retorno=("Retorno ($)", "sum"),
+                Beneficio_Neto=("Beneficio Neto ($)", "sum")
+            ).reset_index()
+
+            df_temp["Acierto (%)"] = (df_temp["Positivos"] / df_temp["Tickets"] * 100.0).round(1)
+            df_temp["Yield (%)"] = (df_temp["Beneficio_Neto"] / df_temp["Invertido"].replace(0, np.nan) * 100.0).fillna(0.0).round(2)
+            df_temp["Beneficio Acumulado ($)"] = df_temp["Beneficio_Neto"].cumsum().round(2)
+            df_temp["Banca Evolución ($)"] = (banca_usuario + df_temp["Beneficio Acumulado ($)"]).round(2)
+            df_temp["Invertido ($)"] = df_temp["Invertido"].round(2)
+            df_temp["Retorno ($)"] = df_temp["Retorno"].round(2)
+            df_temp["Beneficio Neto ($)"] = df_temp["Beneficio_Neto"].round(2)
+            df_temp["Veredicto"] = df_temp["Beneficio Neto ($)"].apply(lambda v: "✅ POSITIVO" if v > 0 else ("⚠️ Negativo" if v < 0 else "Neutro"))
+
+            g_col1, g_col2 = st.columns(2)
+            with g_col1:
+                st.markdown(f"**📊 Beneficio Neto por Período ({granularidad}):**")
+                st.bar_chart(df_temp.set_index("Período")["Beneficio Neto ($)"], color="#ff6b00", height=260)
+            with g_col2:
+                st.markdown(f"**📈 Curva de Evolución de Banca ({granularidad}):**")
+                st.line_chart(df_temp.set_index("Período")["Banca Evolución ($)"], color="#22c55e", height=260)
+
+            cols_temp_ver = ["Período", "Tickets", "Positivos", "Acierto (%)", "Invertido ($)", "Retorno ($)", "Beneficio Neto ($)", "Yield (%)", "Banca Evolución ($)", "Veredicto"]
+            st.dataframe(df_temp[cols_temp_ver].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+
+            # --- ANALÍTICA DE RENTABILIDAD POR MERCADO Y POR DEPORTE ---
             st.markdown("### 📊 Rentabilidad Acumulada por Mercado y por Deporte")
-            # Desglosar rentabilidad por Mercado 1 (mercado principal del ticket)
             res_mercados = cerradas.groupby("Mercado 1").agg(
                 Tickets=("ID", "count"),
-                Ganados=("Estado", lambda x: int((x == "✅ Ganada").sum())),
+                Positivos=("Beneficio Neto ($)", lambda x: int((x > 0).sum())),
                 Invertido_USD=("Stake ($)", "sum"),
                 Beneficio_USD=("Beneficio Neto ($)", "sum"),
                 CLV_Prom=("CLV (%)", "mean")
             ).reset_index()
-            res_mercados["Acierto (%)"] = (res_mercados["Ganados"] / res_mercados["Tickets"] * 100.0).round(1)
+            res_mercados["Acierto (%)"] = (res_mercados["Positivos"] / res_mercados["Tickets"] * 100.0).round(1)
             res_mercados["Yield / ROI (%)"] = (res_mercados["Beneficio_USD"] / res_mercados["Invertido_USD"].replace(0, np.nan) * 100.0).fillna(0.0).round(2)
             res_mercados["Invertido ($)"] = res_mercados["Invertido_USD"].round(2)
             res_mercados["Beneficio Neto ($)"] = res_mercados["Beneficio_USD"].round(2)
@@ -1471,25 +1531,24 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (AUTOCOMPLETADO + RENTA
 
             mejor_merc = res_mercados.iloc[0]
             if mejor_merc["Beneficio Neto ($)"] > 0:
-                st.success(f"🏆 **Tu Mercado Más Rentable Hasta Ahora:** `{mejor_merc['Mercado 1']}` con **`+${mejor_merc['Beneficio Neto ($)']:.2f}`** de ganancia neta (**Yield: `{mejor_merc['Yield / ROI (%)']:+.2f}%`** | Acierto: **`{mejor_merc['Acierto (%)']}%`**).")
+                st.success(f"🏆 **Tu Mercado Más Rentable:** `{mejor_merc['Mercado 1']}` con **`+${mejor_merc['Beneficio Neto ($)']:.2f}`** netos (**Yield: `{mejor_merc['Yield / ROI (%)']:+.2f}%`** | Acierto: **`{mejor_merc['Acierto (%)']}%`**).")
 
-            cols_merc_ver = ["Mercado 1", "Tickets", "Ganados", "Acierto (%)", "Invertido ($)", "Beneficio Neto ($)", "Yield / ROI (%)", "CLV (%)", "Veredicto"]
+            cols_merc_ver = ["Mercado 1", "Tickets", "Positivos", "Acierto (%)", "Invertido ($)", "Beneficio Neto ($)", "Yield / ROI (%)", "CLV (%)", "Veredicto"]
             st.dataframe(res_mercados[cols_merc_ver].rename(columns={"Mercado 1": "Mercado Operado"}).style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
 
-            # Resumen por Deporte
             res_dep = cerradas.groupby("Deporte Principal").agg(
                 Tickets=("ID", "count"),
-                Ganados=("Estado", lambda x: int((x == "✅ Ganada").sum())),
+                Positivos=("Beneficio Neto ($)", lambda x: int((x > 0).sum())),
                 Invertido_USD=("Stake ($)", "sum"),
                 Beneficio_USD=("Beneficio Neto ($)", "sum")
             ).reset_index()
-            res_dep["Acierto (%)"] = (res_dep["Ganados"] / res_dep["Tickets"] * 100.0).round(1)
+            res_dep["Acierto (%)"] = (res_dep["Positivos"] / res_dep["Tickets"] * 100.0).round(1)
             res_dep["Yield / ROI (%)"] = (res_dep["Beneficio_USD"] / res_dep["Invertido_USD"].replace(0, np.nan) * 100.0).fillna(0.0).round(2)
             res_dep["Invertido ($)"] = res_dep["Invertido_USD"].round(2)
             res_dep["Beneficio Neto ($)"] = res_dep["Beneficio_USD"].round(2)
             res_dep["Veredicto"] = res_dep["Beneficio Neto ($)"].apply(lambda v: "✅ RENTABLE (+EV)" if v > 0 else "⚠️ En Ajuste")
             st.markdown("**🏅 Rendimiento por Disciplina Deportiva:**")
-            st.dataframe(res_dep[["Deporte Principal", "Tickets", "Ganados", "Acierto (%)", "Invertido ($)", "Beneficio Neto ($)", "Yield / ROI (%)", "Veredicto"]].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
+            st.dataframe(res_dep[["Deporte Principal", "Tickets", "Positivos", "Acierto (%)", "Invertido ($)", "Beneficio Neto ($)", "Yield / ROI (%)", "Veredicto"]].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
 
         st.markdown("**📋 Historial Completo de Tickets Registrados:**")
         st.dataframe(df_bit_act, use_container_width=True, hide_index=True)
