@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 17.0 | UEFA Suite, Auto-Promotions & NHL PIM",
+    page_title="Pro Bet Analyzer 17.1 | UEFA Real Boxscores & Omni-Sport Quant",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -287,8 +287,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 17.0 <span style="color:#ff8c00;">| UEFA SUITE, AUTO-PROMOTIONS & NHL PIM</span></h1>
-<p>Champions, Europa & Conference League • Ascensos/Descensos Dinámicos • NHL SOG (Solo Over), Minutos Penalización (PIM) y Hándicap Abierto</p>
+<h1>🏆 PRO BET ANALYZER 17.1 <span style="color:#ff8c00;">| UEFA REAL BOXSCORES & QUANT</span></h1>
+<p>Telemetría Real UEFA (Tiros, Arco, Córners y Tarjetas) • Ascensos/Descensos Dinámicos • NHL SOG (Over), PIM & Puck Line</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -354,24 +354,59 @@ MERCADOS_SISTEMA = {
 }
 
 # ==============================================================================
-# EXTRACCIÓN EN VIVO DE TORNEOS UEFA (CHAMPIONS, EUROPA Y CONFERENCE LEAGUE)
+# EXTRACCIÓN EN VIVO DE TORNEOS UEFA CON BOXSCORE REAL (TIROS, CÓRNERS, TARJETAS)
 # ==============================================================================
-UEFA_TORNEOS_ESPN = {
-    "🏆 UEFA Champions League": "uefa.champions",
-    "🥈 UEFA Europa League": "uefa.europa",
-    "🥉 UEFA Conference League": "uefa.europa.conf"
-}
+@st.cache_data(ttl=3600)
+def obtener_telemetria_partido_espn(league_code, event_id):
+    """
+    Consulta el resumen oficial /summary?event={id} de ESPN y extrae:
+    totalShots, shotsOnTarget, wonCorners, yellowCards, redCards reales para Local y Visita.
+    """
+    res = {
+        "HS": np.nan, "HST": np.nan, "HC": np.nan, "HY": np.nan, "HR": np.nan,
+        "AS": np.nan, "AST": np.nan, "AC": np.nan, "AY": np.nan, "AR": np.nan
+    }
+    try:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/summary?event={event_id}"
+        r = requests.get(url, headers=HEADERS_HTTP, timeout=5).json()
+        teams_box = r.get("boxscore", {}).get("teams", [])
+        for tb in teams_box:
+            ha = tb.get("homeAway", "")
+            pref = "H" if ha == "home" else ("A" if ha == "away" else "")
+            if not pref:
+                continue
+            stats_map = {}
+            for st_item in tb.get("statistics", []):
+                nm = str(st_item.get("name", "")).lower()
+                val_raw = st_item.get("displayValue", "0")
+                try:
+                    stats_map[nm] = float(val_raw)
+                except Exception:
+                    pass
+
+            if "totalshots" in stats_map:
+                res[f"{pref}S"] = int(stats_map["totalshots"])
+            if "shotsontarget" in stats_map:
+                res[f"{pref}ST"] = int(stats_map["shotsontarget"])
+            if "woncorners" in stats_map:
+                res[f"{pref}C"] = int(stats_map["woncorners"])
+            if "yellowcards" in stats_map:
+                res[f"{pref}Y"] = int(stats_map["yellowcards"])
+            if "redcards" in stats_map:
+                res[f"{pref}R"] = int(stats_map["redcards"])
+    except Exception:
+        pass
+    return res
 
 @st.cache_data(ttl=1800)
 def cargar_datos_uefa_clubes_espn(league_code):
     """
     Descarga los equipos actuales de la edición vigente de Champions, Europa o Conference League
-    y reconstruye un DataFrame con sus partidos oficiales completados en la competición.
+    y extrae sus partidos oficiales completados con telemetría real (Tiros, Arco, Córners, Tarjetas).
     """
-    filas_partidos = []
+    eventos_unicos = {}
     equipos_activos = set()
     try:
-        # 1. Obtener lista oficial de clubes participantes en la edición actual
         url_t = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/teams?limit=80"
         rt = requests.get(url_t, headers=HEADERS_HTTP, timeout=8).json()
         for sp in rt.get("sports", []):
@@ -383,7 +418,6 @@ def cargar_datos_uefa_clubes_espn(league_code):
                     if nom:
                         equipos_activos.add(nom)
                     if tid:
-                        # Extraer resultados recientes en el torneo para cada club participante
                         url_sc = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/teams/{tid}/schedule"
                         rsc = requests.get(url_sc, headers=HEADERS_HTTP, timeout=6).json()
                         for ev in rsc.get("events", []):
@@ -400,29 +434,43 @@ def cargar_datos_uefa_clubes_espn(league_code):
                                     hg = int(float(sc_h.get("value", sc_h.get("displayValue", 0)))) if isinstance(sc_h, dict) else int(float(sc_h or 0))
                                     ag = int(float(sc_a.get("value", sc_a.get("displayValue", 0)))) if isinstance(sc_a, dict) else int(float(sc_a or 0))
                                     f_ev = ev.get("date", "")[:10]
-                                    ev_id = str(ev.get("id", f"{f_ev}_{h_nom}_{a_nom}"))
-                                    if h_nom and a_nom:
+                                    ev_id = str(ev.get("id", ""))
+                                    if h_nom and a_nom and ev_id:
                                         equipos_activos.add(h_nom)
                                         equipos_activos.add(a_nom)
-                                        filas_partidos.append({
-                                            "_ev_id": ev_id,
-                                            "Date": f_ev,
-                                            "Tournament": league_code.upper(),
-                                            "HomeTeam": h_nom,
-                                            "AwayTeam": a_nom,
-                                            "FTHG": hg,
-                                            "FTAG": ag
-                                        })
+                                        if ev_id not in eventos_unicos:
+                                            eventos_unicos[ev_id] = {
+                                                "ev_id": ev_id,
+                                                "Date": f_ev,
+                                                "Tournament": league_code.upper(),
+                                                "HomeTeam": h_nom,
+                                                "AwayTeam": a_nom,
+                                                "FTHG": hg,
+                                                "FTAG": ag
+                                            }
     except Exception:
         pass
 
+    filas_partidos = []
+    for ev_id, base_row in eventos_unicos.items():
+        tel = obtener_telemetria_partido_espn(league_code, ev_id)
+        fila_completa = {
+            "Date": base_row["Date"],
+            "Tournament": base_row["Tournament"],
+            "HomeTeam": base_row["HomeTeam"],
+            "AwayTeam": base_row["AwayTeam"],
+            "FTHG": base_row["FTHG"],
+            "FTAG": base_row["FTAG"],
+            **tel
+        }
+        filas_partidos.append(fila_completa)
+
     df_uefa = pd.DataFrame(filas_partidos)
     if not df_uefa.empty:
-        df_uefa = df_uefa.drop_duplicates(subset=["_ev_id"]).sort_values("Date").drop(columns=["_ev_id"])
+        df_uefa = df_uefa.sort_values("Date").reset_index(drop=True)
     return df_uefa, sorted(list(equipos_activos))
 
 def obtener_codigo_temporada_dinamico():
-    """Calcula automáticamente el código de temporada de Football-Data (ej. '2627' en Nov 2026, '2728' tras Julio 2027)."""
     hoy = datetime.utcnow()
     anio_ini = hoy.year if hoy.month >= 7 else hoy.year - 1
     anio_fin = anio_ini + 1
@@ -1084,11 +1132,6 @@ def obtener_catalogo_equipos_nhl():
 
 @st.cache_data(ttl=1200)
 def obtener_boxscore_detallado_nhl(game_id):
-    """
-    Consulta el boxscore oficial de api-web.nhle.com y extrae:
-    - Shots on Goal (SOG) Local y Visita
-    - Minutos de Penalización (PIM) Local y Visita
-    """
     try:
         r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=5).json()
         h_tm = r.get("homeTeam", {})
@@ -1103,7 +1146,6 @@ def obtener_boxscore_detallado_nhl(game_id):
 
 @st.cache_data(ttl=900)
 def extraer_ultimos_partidos_nhl_completo(abbrev, condicion="HOME", n_partidos=5):
-    """Extrae Goles, Shots on Goal (SOG) y Minutos de Penalización (PIM) reales de los últimos partidos NHL."""
     if not abbrev:
         return pd.DataFrame()
     filas = []
@@ -1212,10 +1254,6 @@ def obtener_rankings_oficiales_espn_tenis(circuito):
 
 @st.cache_data(ttl=3600)
 def obtener_catalogo_maestro_entidades():
-    """
-    Reúne los clubes activos de la temporada actual (con ascensos/descensos actualizados),
-    los clubes actuales de Champions/Europa/Conference League y los tenistas ATP/WTA.
-    """
     catalogo = {}
     cod_temp = obtener_codigo_temporada_dinamico()
     urls_fut_cat = [
@@ -1248,7 +1286,6 @@ def obtener_catalogo_maestro_entidades():
         except Exception:
             pass
 
-    # Sumar clubes actuales de Champions, Europa y Conference League desde ESPN
     for lg_uefa in ["uefa.champions", "uefa.europa", "uefa.europa.conf"]:
         m_ids, _ = obtener_catalogo_equipos_y_logos_espn("soccer", lg_uefa)
         clubes_fut.update(m_ids.keys())
@@ -1660,7 +1697,7 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y REND
         st.download_button("📥 Descargar Bitácora Completa en CSV / Excel", data=csv_export, file_name="bitacora_pro_bet_analyzer.csv", mime="text/csv")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (UEFA CHAMPIONS/EUROPA/CONFERENCE + ASCENSOS/DESCENSOS AUTO)
+# 1. MÓDULO FÚTBOL (UEFA CON TELEMETRÍA REAL + ASCENSOS/DESCENSOS DINÁMICOS)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -1706,7 +1743,6 @@ if deporte_activo.startswith("⚽"):
             if 'Home' in df.columns:
                 df = df.rename(columns={'Home': 'HomeTeam', 'Away': 'AwayTeam', 'HG': 'FTHG', 'AG': 'FTAG'})
             df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-            # Si aún es pretemporada y el CSV nuevo tiene < 5 partidos, usar temporada anterior solo como respaldo histórico
             if len(df) < 5 and "/2627/" in codigo_o_url:
                 resp_b = requests.get(codigo_o_url.replace("/2627/", "/2526/"), headers=HEADERS_HTTP, timeout=10)
                 df = pd.read_csv(io.StringIO(resp_b.text)).dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
@@ -1715,7 +1751,9 @@ if deporte_activo.startswith("⚽"):
         except Exception:
             return pd.DataFrame(), []
 
-    df_csv, equipos_fut = cargar_datos_futbol_real(LIGAS_FUT[liga_sel])
+    with st.spinner(f"Cargando telemetría oficial de {liga_sel}..."):
+        df_csv, equipos_fut = cargar_datos_futbol_real(LIGAS_FUT[liga_sel])
+
     if df_csv.empty and not equipos_fut:
         st.error("No se pudo conectar al servidor de datos en este momento.")
         st.stop()
@@ -1881,13 +1919,13 @@ if deporte_activo.startswith("⚽"):
     tiene_tiros_csv = ('HS' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HS'].dropna().empty and not p_v['AS'].dropna().empty)
     tiene_tarjetas_csv = ('HY' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HY'].dropna().empty and not p_v['AY'].dropna().empty)
 
-    sh_l = (float(p_l['HS'].mean()) if tiene_tiros_csv else round(9.5 + gf_l * 2.4, 1)) * (0.5 + 0.5 * mult_bajas_l)
-    sh_v = (float(p_v['AS'].mean()) if tiene_tiros_csv else round(8.5 + gf_v * 2.3, 1)) * (0.5 + 0.5 * mult_bajas_v)
-    sot_l = (float(p_l['HST'].mean()) if tiene_tiros_csv else round(2.6 + gf_l * 1.25, 1)) * (0.5 + 0.5 * mult_bajas_l)
-    sot_v = (float(p_v['AST'].mean()) if tiene_tiros_csv else round(2.2 + gf_v * 1.2, 1)) * (0.5 + 0.5 * mult_bajas_v)
+    sh_l = (float(p_l['HS'].dropna().mean()) if tiene_tiros_csv else round(9.5 + gf_l * 2.4, 1)) * (0.5 + 0.5 * mult_bajas_l)
+    sh_v = (float(p_v['AS'].dropna().mean()) if tiene_tiros_csv else round(8.5 + gf_v * 2.3, 1)) * (0.5 + 0.5 * mult_bajas_v)
+    sot_l = (float(p_l['HST'].dropna().mean()) if tiene_tiros_csv else round(2.6 + gf_l * 1.25, 1)) * (0.5 + 0.5 * mult_bajas_l)
+    sot_v = (float(p_v['AST'].dropna().mean()) if tiene_tiros_csv else round(2.2 + gf_v * 1.2, 1)) * (0.5 + 0.5 * mult_bajas_v)
 
-    cor_l_raw = float(p_l['HC'].mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
-    cor_v_raw = float(p_v['AC'].mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
+    cor_l_raw = float(p_l['HC'].dropna().mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
+    cor_v_raw = float(p_v['AC'].dropna().mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
     cor_l = cor_l_raw * factor_blowout_cor
     cor_v = cor_v_raw * factor_blowout_cor
     lam_cor_1t = (cor_l_raw + cor_v_raw) * 0.48
@@ -1939,9 +1977,9 @@ if deporte_activo.startswith("⚽"):
         if hay_riesgo_goleada:
             st.warning(msg_goleada)
         if tiene_tiros_csv and tiene_tarjetas_csv:
-            st.success("✅ Telemetría Completa Opta / Football-Data: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
+            st.success("✅ Telemetría Completa Opta / ESPN: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
         else:
-            st.warning("⚠️ Torneo UEFA / América / Selecciones: El registro oficial contiene Goles Reales verificados partido a partido de los clubes participantes actuales.")
+            st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
 
         if not p_l.empty:
             cols_l = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
@@ -2048,7 +2086,7 @@ if deporte_activo.startswith("⚽"):
 
     with tab3:
         if not tiene_tarjetas_csv:
-            st.warning("⚠️ Esta competición no incluye columnas oficiales de tarjetas en archivo CSV. No se recomienda operar mercados de tarjetas aquí.")
+            st.warning("⚠️ Esta competición no incluye columnas oficiales de tarjetas en el archivo. No se recomienda operar mercados de tarjetas aquí.")
         else:
             st.info(f"📊 Disciplina + Árbitro ({info_arbitro_txt}) + Rivalidad ({etiqueta_clasico}): {eq_l} ({hy_l:.1f} amarillas / {hr_l:.2f} rojas) + {eq_v} ({ay_v:.1f} amarillas / {ar_v:.2f} rojas) × {mult_disciplina_total:.2f}x = {tarj_tot_esp:.2f} tarjetas esperadas.")
             m_tarj = [
@@ -2374,7 +2412,6 @@ elif deporte_activo.startswith("🏒"):
     sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv) * (1.06 if b2b_nl else 1.0), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
-    # Cálculo real de Minutos de Penalización (PIM) desde boxscores NHL
     pim_prop_l = float(df_nhl_l["Min. Penalización (PIM) Propios"].dropna().mean()) if ("Min. Penalización (PIM) Propios" in df_nhl_l and not df_nhl_l["Min. Penalización (PIM) Propios"].dropna().empty) else 8.0
     pim_riv_l = float(df_nhl_l["Min. Penalización (PIM) Rival"].dropna().mean()) if ("Min. Penalización (PIM) Rival" in df_nhl_l and not df_nhl_l["Min. Penalización (PIM) Rival"].dropna().empty) else 8.0
     pim_prop_v = float(df_nhl_v["Min. Penalización (PIM) Propios"].dropna().mean()) if ("Min. Penalización (PIM) Propios" in df_nhl_v and not df_nhl_v["Min. Penalización (PIM) Propios"].dropna().empty) else 8.5
@@ -2432,7 +2469,6 @@ elif deporte_activo.startswith("🏒"):
     c_nh_l = st.sidebar.number_input(f"Moneyline {nh_l} (Inc. OT)", 1.01, 20.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
     c_nh_v = st.sidebar.number_input(f"Moneyline {nh_v} (Inc. OT)", 1.01, 20.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
 
-    # Hándicap abierto configurable (+ o -) igual que en NBA/NFL
     handicap_nhl_loc = st.sidebar.number_input(f"Hándicap / Puck Line {nh_l} (ej. -1.5, +1.5, -2.5)", -6.5, 6.5, -1.5 if diff_goles_nhl > 0.35 else 1.5, 0.5)
     c_hc_nhl_l = st.sidebar.number_input(f"Cuota {nh_l} ({handicap_nhl_loc:+.1f})", 1.01, 15.0, 2.25 if handicap_nhl_loc < 0 else 1.65, 0.05)
     c_hc_nhl_v = st.sidebar.number_input(f"Cuota {nh_v} ({-handicap_nhl_loc:+.1f})", 1.01, 15.0, 1.65 if handicap_nhl_loc < 0 else 2.25, 0.05)
@@ -2451,12 +2487,10 @@ elif deporte_activo.startswith("🏒"):
         c_ov_pim = st.number_input(f"Cuota Over {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
         c_un_pim = st.number_input(f"Cuota Under {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
 
-    # Probabilidad exacta del Hándicap desde la matriz de goles NHL (ajustando prórroga)
     p_hc_nhl_l = 0.0
     for i in range(13):
         for j in range(13):
             if i == j:
-                # Si hay empate a 60', el ganador en prórroga gana por +1 gol
                 p_ot_l = lam_nhl_l / max(tot_nhl, 0.1)
                 if (1.0 + handicap_nhl_loc) > 0:
                     p_hc_nhl_l += float(mat_n[i, j]) * p_ot_l
@@ -2495,7 +2529,6 @@ elif deporte_activo.startswith("🏒"):
         st.dataframe(df_nh1.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with ntab2:
-        # Únicamente Over en Shots on Goal (SOG) + Mercados de Minutos de Penalización (PIM)
         m_sog_pim = [
             (f"🎯 Más de {linea_sog_tot} Shots on Goal Totales (Over)", p_ov_sog_tot, c_ov_sog),
             (f"🎯 {nh_l}: Más de {linea_sog_loc} Shots on Goal (Over)", p_ov_sog_l, c_ov_sog_l),
