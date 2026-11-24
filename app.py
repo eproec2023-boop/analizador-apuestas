@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 17.1 | UEFA Real Boxscores & Omni-Sport Quant",
+    page_title="Pro Bet Analyzer 17.2 | Bayesian Calibration & Universal Football Quant",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -287,8 +287,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 17.1 <span style="color:#ff8c00;">| UEFA REAL BOXSCORES & QUANT</span></h1>
-<p>Telemetría Real UEFA (Tiros, Arco, Córners y Tarjetas) • Ascensos/Descensos Dinámicos • NHL SOG (Over), PIM & Puck Line</p>
+<h1>🏆 PRO BET ANALYZER 17.2 <span style="color:#ff8c00;">| BAYESIAN CALIBRATED QUANT SUITE</span></h1>
+<p>Calibración Bayesiana en Goles, Tiros, Arco y Córners (18 Ligas/UEFA) • Fuerza Rival Acotada • NHL SOG (Over), PIM & Puck Line</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -358,10 +358,6 @@ MERCADOS_SISTEMA = {
 # ==============================================================================
 @st.cache_data(ttl=3600)
 def obtener_telemetria_partido_espn(league_code, event_id):
-    """
-    Consulta el resumen oficial /summary?event={id} de ESPN y extrae:
-    totalShots, shotsOnTarget, wonCorners, yellowCards, redCards reales para Local y Visita.
-    """
     res = {
         "HS": np.nan, "HST": np.nan, "HC": np.nan, "HY": np.nan, "HR": np.nan,
         "AS": np.nan, "AST": np.nan, "AC": np.nan, "AY": np.nan, "AR": np.nan
@@ -400,10 +396,6 @@ def obtener_telemetria_partido_espn(league_code, event_id):
 
 @st.cache_data(ttl=1800)
 def cargar_datos_uefa_clubes_espn(league_code):
-    """
-    Descarga los equipos actuales de la edición vigente de Champions, Europa o Conference League
-    y extrae sus partidos oficiales completados con telemetría real (Tiros, Arco, Córners, Tarjetas).
-    """
     eventos_unicos = {}
     equipos_activos = set()
     try:
@@ -1697,7 +1689,7 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y REND
         st.download_button("📥 Descargar Bitácora Completa en CSV / Excel", data=csv_export, file_name="bitacora_pro_bet_analyzer.csv", mime="text/csv")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (UEFA CON TELEMETRÍA REAL + ASCENSOS/DESCENSOS DINÁMICOS)
+# 1. MÓDULO FÚTBOL (CALIBRACIÓN BAYESIANA UNIVERSAL + SOS ACOTADO + UEFA REAL)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -1769,7 +1761,8 @@ if deporte_activo.startswith("⚽"):
     info_pos_v = mapa_puestos_liga.get(eq_v, {"pos": 10, "pts": 0, "pj": 0, "dg": 0})
 
     col_opt1, col_opt2 = st.sidebar.columns(2)
-    usar_amortiguador = col_opt1.checkbox("🛡️ Bayes (< 6 PJ)", value=("UEFA" in liga_sel))
+    # Activado por defecto en TODAS las ligas para calibrar muestras < 6 partidos
+    usar_amortiguador = col_opt1.checkbox("🛡️ Bayes (< 6 PJ)", value=True)
     usar_sos = col_opt2.checkbox("⚖️ Fuerza Rival (SoS)", value=True)
     col_opt3, col_opt4 = st.sidebar.columns(2)
     usar_dc = col_opt3.checkbox("📐 Dixon-Coles", value=True)
@@ -1851,12 +1844,13 @@ if deporte_activo.startswith("⚽"):
     p_l = df_csv[df_csv['HomeTeam'] == eq_l].tail(5).copy() if not df_csv.empty else pd.DataFrame()
     p_v = df_csv[df_csv['AwayTeam'] == eq_v].tail(5).copy() if not df_csv.empty else pd.DataFrame()
 
-    media_gf_liga_home = float(df_csv['FTHG'].mean()) if not df_csv.empty else 1.50
-    media_gc_liga_home = float(df_csv['FTAG'].mean()) if not df_csv.empty else 1.25
+    media_gf_liga_home = float(df_csv['FTHG'].mean()) if not df_csv.empty else 1.48
+    media_gc_liga_home = float(df_csv['FTAG'].mean()) if not df_csv.empty else 1.22
     media_gf_liga_away = media_gc_liga_home
     media_gc_liga_away = media_gf_liga_home
     media_liga = max((media_gf_liga_home + media_gc_liga_home) / 2.0, 1.25)
 
+    # Fuerza Rival (SoS) ACOTADA entre 0.78x y 1.28x para evitar explosiones en muestras cortas
     if usar_sos and not p_l.empty and not p_v.empty:
         ataque_liga = df_csv.groupby('HomeTeam')['FTHG'].mean().to_dict()
         defensa_liga = df_csv.groupby('AwayTeam')['FTHG'].mean().to_dict()
@@ -1866,16 +1860,20 @@ if deporte_activo.startswith("⚽"):
             riv = r['AwayTeam']
             def_riv = max(defensa_liga.get(riv, media_gf_liga_home), 0.5)
             ata_riv = max(ataque_liga.get(riv, media_gc_liga_home), 0.5)
-            gf_l_adj.append(float(r['FTHG']) * (media_gf_liga_home / def_riv))
-            gc_l_adj.append(float(r['FTAG']) * (media_gc_liga_home / ata_riv))
+            mult_def_l = float(np.clip(media_gf_liga_home / def_riv, 0.78, 1.28))
+            mult_ata_l = float(np.clip(media_gc_liga_home / ata_riv, 0.78, 1.28))
+            gf_l_adj.append(float(r['FTHG']) * mult_def_l)
+            gc_l_adj.append(float(r['FTAG']) * mult_ata_l)
 
         gf_v_adj, gc_v_adj = [], []
         for _, r in p_v.iterrows():
             riv = r['HomeTeam']
             def_riv = max(defensa_liga.get(riv, media_gf_liga_away), 0.5)
             ata_riv = max(ataque_liga.get(riv, media_gc_liga_away), 0.5)
-            gf_v_adj.append(float(r['FTAG']) * (media_gf_liga_away / def_riv))
-            gc_v_adj.append(float(r['FTHG']) * (media_gc_liga_away / ata_riv))
+            mult_def_v = float(np.clip(media_gf_liga_away / def_riv, 0.78, 1.28))
+            mult_ata_v = float(np.clip(media_gc_liga_away / ata_riv, 0.78, 1.28))
+            gf_v_adj.append(float(r['FTAG']) * mult_def_v)
+            gc_v_adj.append(float(r['FTHG']) * mult_ata_v)
 
         gf_l_puro = float(np.mean(gf_l_adj))
         gc_l_puro = float(np.mean(gc_l_adj))
@@ -1888,15 +1886,13 @@ if deporte_activo.startswith("⚽"):
         gc_v_puro = float(p_v['FTHG'].mean()) if not p_v.empty else 1.40
 
     pj_l, pj_v = len(p_l), len(p_v)
-    if usar_amortiguador:
-        peso_l = min(pj_l / 6.0, 1.0)
-        peso_v = min(pj_v / 6.0, 1.0)
-        gf_l = (peso_l * gf_l_puro) + ((1.0 - peso_l) * media_gf_liga_home)
-        gc_l = (peso_l * gc_l_puro) + ((1.0 - peso_l) * media_gc_liga_home)
-        gf_v = (peso_v * gf_v_puro) + ((1.0 - peso_v) * media_gf_liga_away)
-        gc_v = (peso_v * gc_v_puro) + ((1.0 - peso_v) * media_gc_liga_away)
-    else:
-        gf_l, gc_l, gf_v, gc_v = gf_l_puro, gc_l_puro, gf_v_puro, gc_v_puro
+    peso_l = min(pj_l / 6.0, 1.0) if usar_amortiguador else 1.0
+    peso_v = min(pj_v / 6.0, 1.0) if usar_amortiguador else 1.0
+
+    gf_l = (peso_l * gf_l_puro) + ((1.0 - peso_l) * media_gf_liga_home)
+    gc_l = (peso_l * gc_l_puro) + ((1.0 - peso_l) * media_gc_liga_home)
+    gf_v = (peso_v * gf_v_puro) + ((1.0 - peso_v) * media_gf_liga_away)
+    gc_v = (peso_v * gc_v_puro) + ((1.0 - peso_v) * media_gc_liga_away)
 
     gf_l = gf_l * mult_bajas_l
     gf_v = gf_v * mult_bajas_v
@@ -1919,22 +1915,42 @@ if deporte_activo.startswith("⚽"):
     tiene_tiros_csv = ('HS' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HS'].dropna().empty and not p_v['AS'].dropna().empty)
     tiene_tarjetas_csv = ('HY' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HY'].dropna().empty and not p_v['AY'].dropna().empty)
 
-    sh_l = (float(p_l['HS'].dropna().mean()) if tiene_tiros_csv else round(9.5 + gf_l * 2.4, 1)) * (0.5 + 0.5 * mult_bajas_l)
-    sh_v = (float(p_v['AS'].dropna().mean()) if tiene_tiros_csv else round(8.5 + gf_v * 2.3, 1)) * (0.5 + 0.5 * mult_bajas_v)
-    sot_l = (float(p_l['HST'].dropna().mean()) if tiene_tiros_csv else round(2.6 + gf_l * 1.25, 1)) * (0.5 + 0.5 * mult_bajas_l)
-    sot_v = (float(p_v['AST'].dropna().mean()) if tiene_tiros_csv else round(2.2 + gf_v * 1.2, 1)) * (0.5 + 0.5 * mult_bajas_v)
+    # Medias reales de la competición para Amortiguador Bayesiano en Tiros, Arco y Córners
+    media_hs_liga = float(df_csv['HS'].dropna().mean()) if ('HS' in df_csv.columns and not df_csv['HS'].dropna().empty) else 13.0
+    media_as_liga = float(df_csv['AS'].dropna().mean()) if ('AS' in df_csv.columns and not df_csv['AS'].dropna().empty) else 11.2
+    media_hst_liga = float(df_csv['HST'].dropna().mean()) if ('HST' in df_csv.columns and not df_csv['HST'].dropna().empty) else 4.6
+    media_ast_liga = float(df_csv['AST'].dropna().mean()) if ('AST' in df_csv.columns and not df_csv['AST'].dropna().empty) else 3.9
+    media_hc_liga = float(df_csv['HC'].dropna().mean()) if ('HC' in df_csv.columns and not df_csv['HC'].dropna().empty) else 5.2
+    media_ac_liga = float(df_csv['AC'].dropna().mean()) if ('AC' in df_csv.columns and not df_csv['AC'].dropna().empty) else 4.4
 
-    cor_l_raw = float(p_l['HC'].dropna().mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
-    cor_v_raw = float(p_v['AC'].dropna().mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
+    sh_l_puro = float(p_l['HS'].dropna().mean()) if tiene_tiros_csv else round(9.5 + gf_l * 2.4, 1)
+    sh_v_puro = float(p_v['AS'].dropna().mean()) if tiene_tiros_csv else round(8.5 + gf_v * 2.3, 1)
+    sh_l = ((peso_l * sh_l_puro) + ((1.0 - peso_l) * media_hs_liga)) * (0.5 + 0.5 * mult_bajas_l)
+    sh_v = ((peso_v * sh_v_puro) + ((1.0 - peso_v) * media_as_liga)) * (0.5 + 0.5 * mult_bajas_v)
+
+    sot_l_puro = float(p_l['HST'].dropna().mean()) if tiene_tiros_csv else round(2.6 + gf_l * 1.25, 1)
+    sot_v_puro = float(p_v['AST'].dropna().mean()) if tiene_tiros_csv else round(2.2 + gf_v * 1.2, 1)
+    sot_l = ((peso_l * sot_l_puro) + ((1.0 - peso_l) * media_hst_liga)) * (0.5 + 0.5 * mult_bajas_l)
+    sot_v = ((peso_v * sot_v_puro) + ((1.0 - peso_v) * media_ast_liga)) * (0.5 + 0.5 * mult_bajas_v)
+
+    cor_l_puro = float(p_l['HC'].dropna().mean()) if tiene_tiros_csv else round(3.8 + gf_l * 0.68, 1)
+    cor_v_puro = float(p_v['AC'].dropna().mean()) if tiene_tiros_csv else round(3.4 + gf_v * 0.62, 1)
+    cor_l_raw = (peso_l * cor_l_puro) + ((1.0 - peso_l) * media_hc_liga)
+    cor_v_raw = (peso_v * cor_v_puro) + ((1.0 - peso_v) * media_ac_liga)
+
     cor_l = cor_l_raw * factor_blowout_cor
     cor_v = cor_v_raw * factor_blowout_cor
     lam_cor_1t = (cor_l_raw + cor_v_raw) * 0.48
 
     if tiene_tarjetas_csv:
-        hy_l = float(p_l['HY'].fillna(0).mean())
-        hr_l = float(p_l['HR'].fillna(0).mean()) if 'HR' in p_l.columns else 0.0
-        ay_v = float(p_v['AY'].fillna(0).mean())
-        ar_v = float(p_v['AR'].fillna(0).mean()) if 'AR' in p_v.columns else 0.0
+        hy_l_puro = float(p_l['HY'].fillna(0).mean())
+        hr_l_puro = float(p_l['HR'].fillna(0).mean()) if 'HR' in p_l.columns else 0.0
+        ay_v_puro = float(p_v['AY'].fillna(0).mean())
+        ar_v_puro = float(p_v['AR'].fillna(0).mean()) if 'AR' in p_v.columns else 0.0
+        hy_l = (peso_l * hy_l_puro) + ((1.0 - peso_l) * (media_tarj_base_liga * 0.46))
+        ay_v = (peso_v * ay_v_puro) + ((1.0 - peso_v) * (media_tarj_base_liga * 0.52))
+        hr_l = peso_l * hr_l_puro
+        ar_v = peso_v * ar_v_puro
         tarj_tot_esp = round((hy_l + hr_l + ay_v + ar_v) * mult_disciplina_total, 2)
         pts_tarj_esp = round((hy_l + (2.0 * hr_l) + ay_v + (2.0 * ar_v)) * mult_disciplina_total, 2)
     else:
@@ -1955,7 +1971,7 @@ if deporte_activo.startswith("⚽"):
     renderizar_hero_card_deporte(
         eq_l, eq_v, logo_eq_l, fb_eq_l, logo_eq_v, fb_eq_v,
         liga_sel, f"{lam_loc:.2f}  —  {lam_vis:.2f}",
-        f"Goles Esp. (xG): {lam_loc+lam_vis:.2f} • Dixon-Coles: {'ON' if usar_dc else 'OFF'} • SoS: {'ON' if usar_sos else 'OFF'}",
+        f"Goles Esp. (xG): {lam_loc+lam_vis:.2f} • Bayes: {'ON' if usar_amortiguador else 'OFF'} • Dixon-Coles: {'ON' if usar_dc else 'OFF'}",
         prob_1, prob_x, prob_2, pct_baja_l, pct_baja_v,
         badge_extra=badge_hero,
         sub_loc=f"🏠 LOCAL • Puesto #{info_pos_l['pos']} ({info_pos_l['pts']} pts)",
@@ -1977,7 +1993,7 @@ if deporte_activo.startswith("⚽"):
         if hay_riesgo_goleada:
             st.warning(msg_goleada)
         if tiene_tiros_csv and tiene_tarjetas_csv:
-            st.success("✅ Telemetría Completa Opta / ESPN: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
+            st.success(f"✅ Telemetría Completa Opta / ESPN: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales (Muestra: {pj_l} PJ Local + {pj_v} PJ Visita).")
         else:
             st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
 
@@ -2033,13 +2049,17 @@ if deporte_activo.startswith("⚽"):
         cuota_over_tarj = st.number_input("Cuota Over Tarjetas", 1.01, 15.0, 1.85, 0.05)
         cuota_under_tarj = st.number_input("Cuota Under Tarjetas", 1.01, 15.0, 1.90, 0.05)
 
+    # Ensanchar dispersión (scale) cuando la muestra combinada es < 10 partidos para evitar sobreconfianza
+    muestra_comb = min(pj_l + pj_v, 10)
+    factor_incertidumbre = 1.0 + ((10 - muestra_comb) * 0.045)
+
     lam_rem = sh_l + sh_v
-    p_ov_rem = float(1.0 - norm.cdf(linea_remates, loc=lam_rem, scale=4.8))
+    p_ov_rem = float(1.0 - norm.cdf(linea_remates, loc=lam_rem, scale=5.2 * factor_incertidumbre))
     lam_pue = sot_l + sot_v
-    p_ov_pue = float(1.0 - norm.cdf(linea_puerta, loc=lam_pue, scale=2.75))
+    p_ov_pue = float(1.0 - norm.cdf(linea_puerta, loc=lam_pue, scale=3.1 * factor_incertidumbre))
     lam_cor = cor_l + cor_v
-    p_ov_cor = float(1.0 - norm.cdf(linea_corners, loc=lam_cor, scale=3.35))
-    p_ov_cor_1t = float(1.0 - norm.cdf(linea_cor_1t, loc=lam_cor_1t, scale=2.15))
+    p_ov_cor = float(1.0 - norm.cdf(linea_corners, loc=lam_cor, scale=3.65 * factor_incertidumbre))
+    p_ov_cor_1t = float(1.0 - norm.cdf(linea_cor_1t, loc=lam_cor_1t, scale=2.45 * factor_incertidumbre))
     p_ov_tarj = float(1.0 - sum(poisson.pmf(k, max(tarj_tot_esp, 0.5)) for k in range(int(linea_tarjetas) + 1)))
     p_un_tarj = 1.0 - p_ov_tarj
 
