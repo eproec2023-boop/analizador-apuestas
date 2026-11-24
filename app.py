@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 17.2 | Bayesian Calibration & Universal Football Quant",
+    page_title="Pro Bet Analyzer 17.3 | NHL Boxscore PIM Fix & Quant Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -287,8 +287,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 17.2 <span style="color:#ff8c00;">| BAYESIAN CALIBRATED QUANT SUITE</span></h1>
-<p>Calibración Bayesiana en Goles, Tiros, Arco y Córners (18 Ligas/UEFA) • Fuerza Rival Acotada • NHL SOG (Over), PIM & Puck Line</p>
+<h1>🏆 PRO BET ANALYZER 17.3 <span style="color:#ff8c00;">| NHL BOXSCORE PIM & QUANT SUITE</span></h1>
+<p>Calibración Bayesiana Universal (18 Ligas/UEFA) • NHL PIM Real por Jugador, SOG (Over) y Puck Line Abierto • Bitácora & Kelly</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1124,14 +1124,33 @@ def obtener_catalogo_equipos_nhl():
 
 @st.cache_data(ttl=1200)
 def obtener_boxscore_detallado_nhl(game_id):
+    """
+    Extrae SOG y PIM reales desde api-web.nhle.com/v1/gamecenter/{game_id}/boxscore.
+    Suma los minutos de penalización (pim) reales de forwards y defense en playerByGameStats.
+    """
     try:
-        r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=5).json()
+        r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=6).json()
         h_tm = r.get("homeTeam", {})
         a_tm = r.get("awayTeam", {})
         h_sog = int(h_tm.get("sog", 0))
         a_sog = int(a_tm.get("sog", 0))
-        h_pim = int(h_tm.get("pim", 0))
-        a_pim = int(a_tm.get("pim", 0))
+
+        # Calcular PIM real sumando patinadores en playerByGameStats
+        p_stats = r.get("playerByGameStats", {})
+        h_pim = 0
+        a_pim = 0
+        for grupo in ["forwards", "defense"]:
+            for jug in p_stats.get("homeTeam", {}).get(grupo, []):
+                h_pim += int(jug.get("pim", 0))
+            for jug in p_stats.get("awayTeam", {}).get(grupo, []):
+                a_pim += int(jug.get("pim", 0))
+
+        # Respaldo si viniera en la raíz del equipo
+        if h_pim == 0 and "pim" in h_tm:
+            h_pim = int(h_tm.get("pim", 0))
+        if a_pim == 0 and "pim" in a_tm:
+            a_pim = int(a_tm.get("pim", 0))
+
         return h_sog, a_sog, h_pim, a_pim
     except Exception:
         return 0, 0, 0, 0
@@ -1761,7 +1780,6 @@ if deporte_activo.startswith("⚽"):
     info_pos_v = mapa_puestos_liga.get(eq_v, {"pos": 10, "pts": 0, "pj": 0, "dg": 0})
 
     col_opt1, col_opt2 = st.sidebar.columns(2)
-    # Activado por defecto en TODAS las ligas para calibrar muestras < 6 partidos
     usar_amortiguador = col_opt1.checkbox("🛡️ Bayes (< 6 PJ)", value=True)
     usar_sos = col_opt2.checkbox("⚖️ Fuerza Rival (SoS)", value=True)
     col_opt3, col_opt4 = st.sidebar.columns(2)
@@ -1850,7 +1868,6 @@ if deporte_activo.startswith("⚽"):
     media_gc_liga_away = media_gf_liga_home
     media_liga = max((media_gf_liga_home + media_gc_liga_home) / 2.0, 1.25)
 
-    # Fuerza Rival (SoS) ACOTADA entre 0.78x y 1.28x para evitar explosiones en muestras cortas
     if usar_sos and not p_l.empty and not p_v.empty:
         ataque_liga = df_csv.groupby('HomeTeam')['FTHG'].mean().to_dict()
         defensa_liga = df_csv.groupby('AwayTeam')['FTHG'].mean().to_dict()
@@ -1915,7 +1932,6 @@ if deporte_activo.startswith("⚽"):
     tiene_tiros_csv = ('HS' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HS'].dropna().empty and not p_v['AS'].dropna().empty)
     tiene_tarjetas_csv = ('HY' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HY'].dropna().empty and not p_v['AY'].dropna().empty)
 
-    # Medias reales de la competición para Amortiguador Bayesiano en Tiros, Arco y Córners
     media_hs_liga = float(df_csv['HS'].dropna().mean()) if ('HS' in df_csv.columns and not df_csv['HS'].dropna().empty) else 13.0
     media_as_liga = float(df_csv['AS'].dropna().mean()) if ('AS' in df_csv.columns and not df_csv['AS'].dropna().empty) else 11.2
     media_hst_liga = float(df_csv['HST'].dropna().mean()) if ('HST' in df_csv.columns and not df_csv['HST'].dropna().empty) else 4.6
@@ -2049,7 +2065,6 @@ if deporte_activo.startswith("⚽"):
         cuota_over_tarj = st.number_input("Cuota Over Tarjetas", 1.01, 15.0, 1.85, 0.05)
         cuota_under_tarj = st.number_input("Cuota Under Tarjetas", 1.01, 15.0, 1.90, 0.05)
 
-    # Ensanchar dispersión (scale) cuando la muestra combinada es < 10 partidos para evitar sobreconfianza
     muestra_comb = min(pj_l + pj_v, 10)
     factor_incertidumbre = 1.0 + ((10 - muestra_comb) * 0.045)
 
@@ -2329,7 +2344,7 @@ elif deporte_activo.startswith("🎾"):
     c_un_j = st.sidebar.number_input(f"Cuota Menos de {linea_j_ten} Juegos", 1.01, 15.0, 1.90, 0.05)
 
     with st.sidebar.expander("🔥 Cuotas y Línea de Aces (Betano)", expanded=True):
-        linea_aces_def = float(int(aces_totales_esp) + 0.5)
+        linea_aces_def = float(np.clip(int(aces_totales_esp) + 0.5, 2.5, 45.5))
         linea_aces_ten = st.number_input("Línea Total de Aces en Betano", 2.5, 45.5, linea_aces_def, 1.0)
         c_ov_aces = st.number_input(f"Cuota Más de {linea_aces_ten} Aces (Over)", 1.01, 15.0, 1.85, 0.05)
         c_un_aces = st.number_input(f"Cuota Menos de {linea_aces_ten} Aces (Under)", 1.01, 15.0, 1.85, 0.05)
@@ -2432,14 +2447,20 @@ elif deporte_activo.startswith("🏒"):
     sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv) * (1.06 if b2b_nl else 1.0), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
-    pim_prop_l = float(df_nhl_l["Min. Penalización (PIM) Propios"].dropna().mean()) if ("Min. Penalización (PIM) Propios" in df_nhl_l and not df_nhl_l["Min. Penalización (PIM) Propios"].dropna().empty) else 8.0
-    pim_riv_l = float(df_nhl_l["Min. Penalización (PIM) Rival"].dropna().mean()) if ("Min. Penalización (PIM) Rival" in df_nhl_l and not df_nhl_l["Min. Penalización (PIM) Rival"].dropna().empty) else 8.0
-    pim_prop_v = float(df_nhl_v["Min. Penalización (PIM) Propios"].dropna().mean()) if ("Min. Penalización (PIM) Propios" in df_nhl_v and not df_nhl_v["Min. Penalización (PIM) Propios"].dropna().empty) else 8.5
-    pim_riv_v = float(df_nhl_v["Min. Penalización (PIM) Rival"].dropna().mean()) if ("Min. Penalización (PIM) Rival" in df_nhl_v and not df_nhl_v["Min. Penalización (PIM) Rival"].dropna().empty) else 8.0
+    # Cálculo real de Minutos de Penalización (PIM) desde boxscores de jugadores NHL
+    pim_l_serie = df_nhl_l["Min. Penalización (PIM) Propios"].dropna() if "Min. Penalización (PIM) Propios" in df_nhl_l else pd.Series(dtype=float)
+    pim_rl_serie = df_nhl_l["Min. Penalización (PIM) Rival"].dropna() if "Min. Penalización (PIM) Rival" in df_nhl_l else pd.Series(dtype=float)
+    pim_v_serie = df_nhl_v["Min. Penalización (PIM) Propios"].dropna() if "Min. Penalización (PIM) Propios" in df_nhl_v else pd.Series(dtype=float)
+    pim_rv_serie = df_nhl_v["Min. Penalización (PIM) Rival"].dropna() if "Min. Penalización (PIM) Rival" in df_nhl_v else pd.Series(dtype=float)
+
+    pim_prop_l = float(pim_l_serie.mean()) if (not pim_l_serie.empty and pim_l_serie.sum() > 0) else 8.0
+    pim_riv_l = float(pim_rl_serie.mean()) if (not pim_rl_serie.empty and pim_rl_serie.sum() > 0) else 8.0
+    pim_prop_v = float(pim_v_serie.mean()) if (not pim_v_serie.empty and pim_v_serie.sum() > 0) else 8.5
+    pim_riv_v = float(pim_rv_serie.mean()) if (not pim_rv_serie.empty and pim_rv_serie.sum() > 0) else 8.0
 
     pim_esp_loc = round((pim_prop_l + pim_riv_v) / 2.0, 1)
     pim_esp_vis = round((pim_prop_v + pim_riv_l) / 2.0, 1)
-    pim_totales_esp = round(pim_esp_loc + pim_esp_vis, 1)
+    pim_totales_esp = round(max(pim_esp_loc + pim_esp_vis, 6.0), 1)
 
     lam_nhl_l = max((gf_nhl_l * gc_nhl_v) / media_nhl_global, 0.50)
     lam_nhl_v = max((gf_nhl_v * gc_nhl_l) / media_nhl_global, 0.50)
@@ -2498,12 +2519,17 @@ elif deporte_activo.startswith("🏒"):
     c_un_nhl = st.sidebar.number_input(f"Cuota Under {linea_nhl} Goles", 1.01, 15.0, 1.92, 0.05)
 
     with st.sidebar.expander("🎯 Líneas Tiros (Solo Over) y Penalizaciones (PIM)", expanded=True):
-        linea_sog_tot = st.number_input("Línea Tiros al Arco Totales (Over)", 40.5, 80.5, float(int(sog_totales_esp) + 0.5), 1.0)
+        def_sog_tot = float(np.clip(int(sog_totales_esp) + 0.5, 35.5, 85.5))
+        linea_sog_tot = st.number_input("Línea Tiros al Arco Totales (Over)", 35.5, 85.5, def_sog_tot, 1.0)
         c_ov_sog = st.number_input(f"Cuota Over {linea_sog_tot} Tiros", 1.01, 15.0, 1.87, 0.05)
-        linea_sog_loc = st.number_input(f"Línea Tiros {nh_l} Local (Over)", 18.5, 45.5, float(int(sog_esp_loc) + 0.5), 1.0)
+
+        def_sog_loc = float(np.clip(int(sog_esp_loc) + 0.5, 15.5, 50.5))
+        linea_sog_loc = st.number_input(f"Línea Tiros {nh_l} Local (Over)", 15.5, 50.5, def_sog_loc, 1.0)
         c_ov_sog_l = st.number_input(f"Cuota Over {linea_sog_loc} Tiros {nh_l}", 1.01, 15.0, 1.85, 0.05)
+
         st.markdown("---")
-        linea_pim_tot = st.number_input("⏱️ Línea Minutos Penalización (PIM)", 4.5, 35.5, float(int(pim_totales_esp) + 0.5), 1.0)
+        def_pim_tot = float(np.clip(int(pim_totales_esp) + 0.5, 4.5, 45.5))
+        linea_pim_tot = st.number_input("⏱️ Línea Minutos Penalización (PIM)", 4.5, 45.5, def_pim_tot, 1.0)
         c_ov_pim = st.number_input(f"Cuota Over {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
         c_un_pim = st.number_input(f"Cuota Under {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
 
