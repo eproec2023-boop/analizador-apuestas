@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 16.2 | Temporal ROI, Cash Out & Analytics",
+    page_title="Pro Bet Analyzer 17.0 | UEFA Suite, Auto-Promotions & NHL PIM",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -287,8 +287,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 16.2 <span style="color:#ff8c00;">| TEMPORAL ROI, CASH OUT & ANALYTICS</span></h1>
-<p>Bitácora con Fecha, Cash Out y Evolución Día / Semana / Mes • Gráficos de Rentabilidad • Kelly & Modelos Cuantitativos</p>
+<h1>🏆 PRO BET ANALYZER 17.0 <span style="color:#ff8c00;">| UEFA SUITE, AUTO-PROMOTIONS & NHL PIM</span></h1>
+<p>Champions, Europa & Conference League • Ascensos/Descensos Dinámicos • NHL SOG (Solo Over), Minutos Penalización (PIM) y Hándicap Abierto</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -326,11 +326,13 @@ MERCADOS_SISTEMA = {
     ],
     "🏒 Hockey (NHL)": [
         "Moneyline NHL (Inc. Prórroga)",
+        "Hándicap / Puck Line NHL",
         "Total Goles NHL (Over 5.5 / 6.0 / 6.5)",
         "Total Goles NHL (Under 5.5 / 6.0 / 6.5)",
         "Shots on Goal (SOG) Totales (Over)",
-        "Shots on Goal (SOG) Totales (Under)",
-        "Shots on Goal (SOG) Equipo Local (Over)"
+        "Shots on Goal (SOG) Equipo Local (Over)",
+        "Minutos de Penalización (PIM) Totales (Over)",
+        "Minutos de Penalización (PIM) Totales (Under)"
     ],
     "🏀 Basketball (NBA)": [
         "Moneyline NBA",
@@ -350,6 +352,81 @@ MERCADOS_SISTEMA = {
         "Total Carreras MLB (Under)"
     ]
 }
+
+# ==============================================================================
+# EXTRACCIÓN EN VIVO DE TORNEOS UEFA (CHAMPIONS, EUROPA Y CONFERENCE LEAGUE)
+# ==============================================================================
+UEFA_TORNEOS_ESPN = {
+    "🏆 UEFA Champions League": "uefa.champions",
+    "🥈 UEFA Europa League": "uefa.europa",
+    "🥉 UEFA Conference League": "uefa.europa.conf"
+}
+
+@st.cache_data(ttl=1800)
+def cargar_datos_uefa_clubes_espn(league_code):
+    """
+    Descarga los equipos actuales de la edición vigente de Champions, Europa o Conference League
+    y reconstruye un DataFrame con sus partidos oficiales completados en la competición.
+    """
+    filas_partidos = []
+    equipos_activos = set()
+    try:
+        # 1. Obtener lista oficial de clubes participantes en la edición actual
+        url_t = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/teams?limit=80"
+        rt = requests.get(url_t, headers=HEADERS_HTTP, timeout=8).json()
+        for sp in rt.get("sports", []):
+            for lg in sp.get("leagues", []):
+                for tw in lg.get("teams", []):
+                    tm = tw.get("team", {})
+                    nom = tm.get("displayName", "")
+                    tid = str(tm.get("id", ""))
+                    if nom:
+                        equipos_activos.add(nom)
+                    if tid:
+                        # Extraer resultados recientes en el torneo para cada club participante
+                        url_sc = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/teams/{tid}/schedule"
+                        rsc = requests.get(url_sc, headers=HEADERS_HTTP, timeout=6).json()
+                        for ev in rsc.get("events", []):
+                            comp = ev.get("competitions", [{}])[0]
+                            if comp.get("status", {}).get("type", {}).get("completed", False):
+                                comps = comp.get("competitors", [])
+                                if len(comps) == 2:
+                                    h_c = comps[0] if comps[0].get("homeAway") == "home" else comps[1]
+                                    a_c = comps[1] if comps[0].get("homeAway") == "home" else comps[0]
+                                    h_nom = h_c.get("team", {}).get("displayName", "")
+                                    a_nom = a_c.get("team", {}).get("displayName", "")
+                                    sc_h = h_c.get("score", 0)
+                                    sc_a = a_c.get("score", 0)
+                                    hg = int(float(sc_h.get("value", sc_h.get("displayValue", 0)))) if isinstance(sc_h, dict) else int(float(sc_h or 0))
+                                    ag = int(float(sc_a.get("value", sc_a.get("displayValue", 0)))) if isinstance(sc_a, dict) else int(float(sc_a or 0))
+                                    f_ev = ev.get("date", "")[:10]
+                                    ev_id = str(ev.get("id", f"{f_ev}_{h_nom}_{a_nom}"))
+                                    if h_nom and a_nom:
+                                        equipos_activos.add(h_nom)
+                                        equipos_activos.add(a_nom)
+                                        filas_partidos.append({
+                                            "_ev_id": ev_id,
+                                            "Date": f_ev,
+                                            "Tournament": league_code.upper(),
+                                            "HomeTeam": h_nom,
+                                            "AwayTeam": a_nom,
+                                            "FTHG": hg,
+                                            "FTAG": ag
+                                        })
+    except Exception:
+        pass
+
+    df_uefa = pd.DataFrame(filas_partidos)
+    if not df_uefa.empty:
+        df_uefa = df_uefa.drop_duplicates(subset=["_ev_id"]).sort_values("Date").drop(columns=["_ev_id"])
+    return df_uefa, sorted(list(equipos_activos))
+
+def obtener_codigo_temporada_dinamico():
+    """Calcula automáticamente el código de temporada de Football-Data (ej. '2627' en Nov 2026, '2728' tras Julio 2027)."""
+    hoy = datetime.utcnow()
+    anio_ini = hoy.year if hoy.month >= 7 else hoy.year - 1
+    anio_fin = anio_ini + 1
+    return f"{str(anio_ini)[-2:]}{str(anio_fin)[-2:]}"
 
 # ==============================================================================
 # RECONSTRUCTOR DE TABLA DE POSICIONES Y DETECTOR DE RIESGO DE GOLEADA (BLOWOUT)
@@ -438,14 +515,17 @@ def evaluar_riesgo_goleada_corners(mat, pos_loc, pos_vis, total_equipos):
 CLASICOS_MUNDIALES = [
     ("real madrid", "barcelona", "El Clásico de España (+18% Fricción)"),
     ("real madrid", "ath madrid", "Derbi Madrileño (+18% Fricción)"),
+    ("real madrid", "atletico", "Derbi Madrileño (+18% Fricción)"),
     ("barcelona", "espanol", "Derbi Barcelonés (+18% Fricción)"),
     ("betis", "sevilla", "El Gran Derbi Sevillano (+20% Fricción)"),
     ("ath bilbao", "sociedad", "Derbi Vasco (+18% Fricción)"),
     ("valencia", "villarreal", "Derbi de la Comunitat (+16% Fricción)"),
     ("arsenal", "tottenham", "North London Derby (+18% Fricción)"),
     ("liverpool", "man united", "Clásico de Inglaterra (+18% Fricción)"),
+    ("liverpool", "manchester united", "Clásico de Inglaterra (+18% Fricción)"),
     ("liverpool", "everton", "Merseyside Derby (+18% Fricción)"),
     ("man city", "man united", "Manchester Derby (+16% Fricción)"),
+    ("manchester city", "manchester united", "Manchester Derby (+16% Fricción)"),
     ("chelsea", "arsenal", "Derbi de Londres (+16% Fricción)"),
     ("chelsea", "tottenham", "Derbi de Londres (+18% Fricción)"),
     ("newcastle", "sunderland", "Tyne-Wear Derby (+20% Fricción)"),
@@ -461,12 +541,14 @@ CLASICOS_MUNDIALES = [
     ("hamburg", "st pauli", "Derbi de Hamburgo (+20% Fricción)"),
     ("koln", "m'gladbach", "Derbi del Rin (+18% Fricción)"),
     ("paris sg", "marseille", "Le Classique Francia (+20% Fricción)"),
+    ("paris saint-germain", "marseille", "Le Classique Francia (+20% Fricción)"),
     ("lyon", "st etienne", "Derby Rhône-Alpes (+20% Fricción)"),
     ("nice", "monaco", "Derby de la Côte d'Azur (+16% Fricción)"),
     ("ajax", "feyenoord", "De Klassieker Holanda (+20% Fricción)"),
     ("ajax", "psv", "De Topper Holanda (+16% Fricción)"),
     ("benfica", "porto", "O Clássico Portugal (+20% Fricción)"),
     ("benfica", "sp lisbon", "Dérbi de Lisboa (+18% Fricción)"),
+    ("benfica", "sporting cp", "Dérbi de Lisboa (+18% Fricción)"),
     ("porto", "sp lisbon", "Clásico Portugal (+18% Fricción)"),
     ("celtic", "rangers", "Old Firm Derby (+22% Fricción)"),
     ("anderlecht", "club brugge", "De Topper Bélgica (+18% Fricción)"),
@@ -691,6 +773,9 @@ def construir_tabla_mercados_kelly(lista_mercados, col_nombre, banca_act, frac_k
 # MOTOR DE INTELIGENCIA AUTOMÁTICA DE BAJAS, ÁRBITROS Y ESCUDOS (ESPN / NHL)
 # ==============================================================================
 ESPN_LEAGUE_MAP = {
+    "🏆 UEFA Champions League": ("soccer", "uefa.champions"),
+    "🥈 UEFA Europa League": ("soccer", "uefa.europa"),
+    "🥉 UEFA Conference League": ("soccer", "uefa.europa.conf"),
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": ("soccer", "eng.1"),
     "🇪🇸 LaLiga (España)": ("soccer", "esp.1"),
     "🇮🇹 Serie A (Italia)": ("soccer", "ita.1"),
@@ -887,7 +972,7 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
     return 1.0 - (imp_loc / 100.0), 1.0 - (imp_vis / 100.0), imp_loc, imp_vis
 
 # ==============================================================================
-# FUNCIONES GLOBALES DE DATOS DEPORTIVOS (NATIONS LEAGUE, ESPN, NHL)
+# FUNCIONES GLOBALES DE DATOS DEPORTIVOS (NATIONS LEAGUE, ESPN, NHL + PIM)
 # ==============================================================================
 SELECCIONES_UEFA = [
     "Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium",
@@ -998,17 +1083,27 @@ def obtener_catalogo_equipos_nhl():
     return mapa, mapa_logos
 
 @st.cache_data(ttl=1200)
-def obtener_sog_boxscore_nhl(game_id):
+def obtener_boxscore_detallado_nhl(game_id):
+    """
+    Consulta el boxscore oficial de api-web.nhle.com y extrae:
+    - Shots on Goal (SOG) Local y Visita
+    - Minutos de Penalización (PIM) Local y Visita
+    """
     try:
         r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=5).json()
-        h_sog = int(r.get("homeTeam", {}).get("sog", 0))
-        a_sog = int(r.get("awayTeam", {}).get("sog", 0))
-        return h_sog, a_sog
+        h_tm = r.get("homeTeam", {})
+        a_tm = r.get("awayTeam", {})
+        h_sog = int(h_tm.get("sog", 0))
+        a_sog = int(a_tm.get("sog", 0))
+        h_pim = int(h_tm.get("pim", 0))
+        a_pim = int(a_tm.get("pim", 0))
+        return h_sog, a_sog, h_pim, a_pim
     except Exception:
-        return 0, 0
+        return 0, 0, 0, 0
 
 @st.cache_data(ttl=900)
-def extraer_ultimos_partidos_nhl_con_sog(abbrev, condicion="HOME", n_partidos=5):
+def extraer_ultimos_partidos_nhl_completo(abbrev, condicion="HOME", n_partidos=5):
+    """Extrae Goles, Shots on Goal (SOG) y Minutos de Penalización (PIM) reales de los últimos partidos NHL."""
     if not abbrev:
         return pd.DataFrame()
     filas = []
@@ -1036,9 +1131,11 @@ def extraer_ultimos_partidos_nhl_con_sog(abbrev, condicion="HOME", n_partidos=5)
             a_sc = int(a_tm.get("score", 0))
             es_local = (h_ab == abbrev)
 
-            h_sog, a_sog = obtener_sog_boxscore_nhl(gid) if gid else (0, 0)
+            h_sog, a_sog, h_pim, a_pim = obtener_boxscore_detallado_nhl(gid) if gid else (0, 0, 0, 0)
             sog_favor = h_sog if es_local else a_sog
             sog_contra = a_sog if es_local else h_sog
+            pim_propio = h_pim if es_local else a_pim
+            pim_rival = a_pim if es_local else h_pim
 
             gf = h_sc if es_local else a_sc
             gc = a_sc if es_local else h_sc
@@ -1056,6 +1153,9 @@ def extraer_ultimos_partidos_nhl_con_sog(abbrev, condicion="HOME", n_partidos=5)
                 "Tiros al Arco (SOG) Favor": sog_favor if sog_favor > 0 else np.nan,
                 "Tiros al Arco (SOG) Contra": sog_contra if sog_contra > 0 else np.nan,
                 "Total Tiros (SOG)": (sog_favor + sog_contra) if (sog_favor > 0 and sog_contra > 0) else np.nan,
+                "Min. Penalización (PIM) Propios": pim_propio,
+                "Min. Penalización (PIM) Rival": pim_rival,
+                "Total Min. Penalización (PIM)": pim_propio + pim_rival,
                 "Definición": cierre_lbl,
                 "Resultado": "✅ Victoria" if gf > gc else "❌ Derrota"
             })
@@ -1112,18 +1212,23 @@ def obtener_rankings_oficiales_espn_tenis(circuito):
 
 @st.cache_data(ttl=3600)
 def obtener_catalogo_maestro_entidades():
+    """
+    Reúne los clubes activos de la temporada actual (con ascensos/descensos actualizados),
+    los clubes actuales de Champions/Europa/Conference League y los tenistas ATP/WTA.
+    """
     catalogo = {}
+    cod_temp = obtener_codigo_temporada_dinamico()
     urls_fut_cat = [
-        "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/D1.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/F1.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/N1.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/P1.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/SC0.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/B1.csv",
-        "https://www.football-data.co.uk/mmz4281/2627/T1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/E0.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/SP1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/I1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/D1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/F1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/N1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/P1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/SC0.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/B1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/T1.csv",
         "https://www.football-data.co.uk/new/USA.csv",
         "https://www.football-data.co.uk/new/BRA.csv",
         "https://www.football-data.co.uk/new/ARG.csv",
@@ -1142,6 +1247,12 @@ def obtener_catalogo_maestro_entidades():
                     clubes_fut.update(df_t[c_a].dropna().astype(str).tolist())
         except Exception:
             pass
+
+    # Sumar clubes actuales de Champions, Europa y Conference League desde ESPN
+    for lg_uefa in ["uefa.champions", "uefa.europa", "uefa.europa.conf"]:
+        m_ids, _ = obtener_catalogo_equipos_y_logos_espn("soccer", lg_uefa)
+        clubes_fut.update(m_ids.keys())
+
     catalogo["⚽ Fútbol"] = sorted(list(clubes_fut))
 
     cat_atp = obtener_rankings_oficiales_espn_tenis("ATP (Masculino)")
@@ -1299,9 +1410,9 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (15 Ligas + Tabla Posiciones + Blowout + Árbitro)",
+    "⚽ Fútbol (18 Torneos: UEFA Champions/Europa/Conf + Ligas)",
     "🎾 Tenis (ATP / WTA Superficie 2x, Aces + Indoor/Altura)",
-    "🏒 Hockey sobre Hielo (NHL - Local/Visita, SOG + Portero + B2B)",
+    "🏒 Hockey sobre Hielo (NHL - SOG Over, PIM + Hándicap Abierto)",
     "🏀 Basketball (NBA - Local/Visita, B2B + Spread)",
     "🏈 Fútbol Americano (NFL - Local/Visita, Clima + Spread)",
     "⚾ Béisbol (MLB - API ESPN + Escudos)"
@@ -1341,20 +1452,16 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y REND
         min_value=0.0, max_value=1000000.0,
         value=round(stake_reg * 1.25, 2) if "Cash Out" in estado_reg else 0.0,
         step=0.50,
-        disabled=("Cash Out" not in estado_reg),
-        help="Habilitado al elegir '💰 Cash Out'. Ingresa el monto exacto cobrado al cerrar antes."
+        disabled=("Cash Out" not in estado_reg)
     )
 
-    # Pata 1
     dep1, part1, merc1, cuota1_val, cierre1_val = renderizar_selector_pata_bitacora(1, catalogo_global, True)
 
-    # Pata 2
     if "2 Partidos" in tipo_apuesta_reg or "3 Partidos" in tipo_apuesta_reg:
         dep2, part2, merc2, cuota2_val, cierre2_val = renderizar_selector_pata_bitacora(2, catalogo_global, False)
     else:
         dep2, part2, merc2, cuota2_val, cierre2_val = "-", "-", "-", 1.0, 1.0
 
-    # Pata 3
     if "3 Partidos" in tipo_apuesta_reg:
         dep3, part3, merc3, cuota3_val, cierre3_val = renderizar_selector_pata_bitacora(3, catalogo_global, False)
     else:
@@ -1416,7 +1523,6 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y REND
     df_bit_act = st.session_state["bitacora_apuestas"]
     if not df_bit_act.empty:
         st.markdown("---")
-        # Gestor rápido para liquidar tickets pendientes (incluye Ganada, Perdida y Cash Out con monto)
         pendientes_df = df_bit_act[df_bit_act["Estado"] == "⏳ Pendiente"]
         if not pendientes_df.empty:
             st.markdown("**⏱️ Cerrar / Liquidar Ticket Pendiente (Ganada, Perdida o Cash Out):**")
@@ -1465,7 +1571,6 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y REND
         bm3.metric("🎯 Tickets en Verde (%)", f"{win_rate:.1f}%", f"{positivas_cnt}/{len(cerradas)} tickets positivos")
         bm4.metric("⚡ CLV Promedio", f"{clv_medio:+.2f}%", "Ventaja vs cierre Betano")
 
-        # --- ANÁLISIS TEMPORAL (POR DÍA, POR SEMANA, POR MES) + GRÁFICOS ---
         if not cerradas.empty:
             st.markdown("### 📈 Evolución Temporal de Rendimiento (Por Día, Semana y Mes)")
             cerradas["Fecha_dt"] = pd.to_datetime(cerradas["Fecha"], errors="coerce")
@@ -1512,7 +1617,6 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y REND
             cols_temp_ver = ["Período", "Tickets", "Positivos", "Acierto (%)", "Invertido ($)", "Retorno ($)", "Beneficio Neto ($)", "Yield (%)", "Banca Evolución ($)", "Veredicto"]
             st.dataframe(df_temp[cols_temp_ver].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
 
-            # --- ANALÍTICA DE RENTABILIDAD POR MERCADO Y POR DEPORTE ---
             st.markdown("### 📊 Rentabilidad Acumulada por Mercado y por Deporte")
             res_mercados = cerradas.groupby("Mercado 1").agg(
                 Tickets=("ID", "count"),
@@ -1556,21 +1660,25 @@ with st.expander("📒 BITÁCORA INTELIGENTE DE APUESTAS (FECHA, CASH OUT Y REND
         st.download_button("📥 Descargar Bitácora Completa en CSV / Excel", data=csv_export, file_name="bitacora_pro_bet_analyzer.csv", mime="text/csv")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (TABLA POSICIONES + BLOWOUT DECAY + CLÁSICOS + ÁRBITRO)
+# 1. MÓDULO FÚTBOL (UEFA CHAMPIONS/EUROPA/CONFERENCE + ASCENSOS/DESCENSOS AUTO)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
+    cod_temp_act = obtener_codigo_temporada_dinamico()
     LIGAS_FUT = {
-        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
-        "🇪🇸 LaLiga (España)": "https://www.football-data.co.uk/mmz4281/2627/SP1.csv",
-        "🇮🇹 Serie A (Italia)": "https://www.football-data.co.uk/mmz4281/2627/I1.csv",
-        "🇩🇪 Bundesliga (Alemania)": "https://www.football-data.co.uk/mmz4281/2627/D1.csv",
-        "🇫🇷 Ligue 1 (Francia)": "https://www.football-data.co.uk/mmz4281/2627/F1.csv",
-        "🇳🇱 Eredivisie (Países Bajos)": "https://www.football-data.co.uk/mmz4281/2627/N1.csv",
-        "🇵🇹 Primeira Liga (Portugal)": "https://www.football-data.co.uk/mmz4281/2627/P1.csv",
-        "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Premiership (Escocia)": "https://www.football-data.co.uk/mmz4281/2627/SC0.csv",
-        "🇧🇪 Jupiler Pro League (Bélgica)": "https://www.football-data.co.uk/mmz4281/2627/B1.csv",
-        "🇹🇷 Süper Lig (Turquía)": "https://www.football-data.co.uk/mmz4281/2627/T1.csv",
+        "🏆 UEFA Champions League": "UEFA_CHAMPIONS",
+        "🥈 UEFA Europa League": "UEFA_EUROPA",
+        "🥉 UEFA Conference League": "UEFA_CONFERENCE",
+        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/E0.csv",
+        "🇪🇸 LaLiga (España)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/SP1.csv",
+        "🇮🇹 Serie A (Italia)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/I1.csv",
+        "🇩🇪 Bundesliga (Alemania)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/D1.csv",
+        "🇫🇷 Ligue 1 (Francia)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/F1.csv",
+        "🇳🇱 Eredivisie (Países Bajos)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/N1.csv",
+        "🇵🇹 Primeira Liga (Portugal)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/P1.csv",
+        "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Premiership (Escocia)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/SC0.csv",
+        "🇧🇪 Jupiler Pro League (Bélgica)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/B1.csv",
+        "🇹🇷 Süper Lig (Turquía)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/T1.csv",
         "🌍 UEFA Nations League (Selecciones UEFA)": "NATIONS_LEAGUE",
         "🇺🇸 MLS (Estados Unidos)": "https://www.football-data.co.uk/new/USA.csv",
         "🇧🇷 Brasileirão Serie A (Brasil)": "https://www.football-data.co.uk/new/BRA.csv",
@@ -1580,31 +1688,41 @@ if deporte_activo.startswith("⚽"):
     liga_sel = st.sidebar.selectbox("Selecciona la Liga / Torneo:", list(LIGAS_FUT.keys()))
 
     @st.cache_data(ttl=1800)
-    def cargar_datos_futbol_real(url):
-        if url == "NATIONS_LEAGUE":
-            return cargar_datos_nations_league()
+    def cargar_datos_futbol_real(codigo_o_url):
+        if codigo_o_url == "NATIONS_LEAGUE":
+            df_nl = cargar_datos_nations_league()
+            eqs_nl = sorted(list(set(df_nl['HomeTeam'].unique()).union(set(df_nl['AwayTeam'].unique())))) if not df_nl.empty else []
+            return df_nl, eqs_nl
+        if codigo_o_url == "UEFA_CHAMPIONS":
+            return cargar_datos_uefa_clubes_espn("uefa.champions")
+        if codigo_o_url == "UEFA_EUROPA":
+            return cargar_datos_uefa_clubes_espn("uefa.europa")
+        if codigo_o_url == "UEFA_CONFERENCE":
+            return cargar_datos_uefa_clubes_espn("uefa.europa.conf")
+
         try:
-            resp = requests.get(url, headers=HEADERS_HTTP, timeout=10)
+            resp = requests.get(codigo_o_url, headers=HEADERS_HTTP, timeout=10)
             df = pd.read_csv(io.StringIO(resp.text))
             if 'Home' in df.columns:
                 df = df.rename(columns={'Home': 'HomeTeam', 'Away': 'AwayTeam', 'HG': 'FTHG', 'AG': 'FTAG'})
             df = df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-            if len(df) < 5 and "/2627/" in url:
-                resp_b = requests.get(url.replace("/2627/", "/2526/"), headers=HEADERS_HTTP, timeout=10)
+            # Si aún es pretemporada y el CSV nuevo tiene < 5 partidos, usar temporada anterior solo como respaldo histórico
+            if len(df) < 5 and "/2627/" in codigo_o_url:
+                resp_b = requests.get(codigo_o_url.replace("/2627/", "/2526/"), headers=HEADERS_HTTP, timeout=10)
                 df = pd.read_csv(io.StringIO(resp_b.text)).dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-            return df
+            eqs_activos = sorted(list(set(df['HomeTeam'].unique()).union(set(df['AwayTeam'].unique()))))
+            return df, eqs_activos
         except Exception:
-            return pd.DataFrame()
+            return pd.DataFrame(), []
 
-    df_csv = cargar_datos_futbol_real(LIGAS_FUT[liga_sel])
-    if df_csv.empty:
+    df_csv, equipos_fut = cargar_datos_futbol_real(LIGAS_FUT[liga_sel])
+    if df_csv.empty and not equipos_fut:
         st.error("No se pudo conectar al servidor de datos en este momento.")
         st.stop()
 
     df_tabla_pos, mapa_puestos_liga = calcular_tabla_posiciones_csv(df_csv)
     total_eq_liga = max(len(df_tabla_pos), 18)
 
-    equipos_fut = sorted(list(set(df_csv['HomeTeam'].unique()).union(set(df_csv['AwayTeam'].unique()))))
     c1, c2 = st.sidebar.columns(2)
     eq_l = c1.selectbox("🏠 Local", equipos_fut, index=0)
     eq_v = c2.selectbox("✈️ Visita", equipos_fut, index=1 if len(equipos_fut) > 1 else 0)
@@ -1613,7 +1731,7 @@ if deporte_activo.startswith("⚽"):
     info_pos_v = mapa_puestos_liga.get(eq_v, {"pos": 10, "pts": 0, "pj": 0, "dg": 0})
 
     col_opt1, col_opt2 = st.sidebar.columns(2)
-    usar_amortiguador = col_opt1.checkbox("🛡️ Bayes (< 6 PJ)", value=False)
+    usar_amortiguador = col_opt1.checkbox("🛡️ Bayes (< 6 PJ)", value=("UEFA" in liga_sel))
     usar_sos = col_opt2.checkbox("⚖️ Fuerza Rival (SoS)", value=True)
     col_opt3, col_opt4 = st.sidebar.columns(2)
     usar_dc = col_opt3.checkbox("📐 Dixon-Coles", value=True)
@@ -1692,11 +1810,11 @@ if deporte_activo.startswith("⚽"):
 
     mult_bajas_l, mult_bajas_v, pct_baja_l, pct_baja_v = renderizar_panel_bajas_y_factor(espn_sp, espn_lg, eq_l, eq_v, f"fut_{eq_l}_{eq_v}")
 
-    p_l = df_csv[df_csv['HomeTeam'] == eq_l].tail(5).copy()
-    p_v = df_csv[df_csv['AwayTeam'] == eq_v].tail(5).copy()
+    p_l = df_csv[df_csv['HomeTeam'] == eq_l].tail(5).copy() if not df_csv.empty else pd.DataFrame()
+    p_v = df_csv[df_csv['AwayTeam'] == eq_v].tail(5).copy() if not df_csv.empty else pd.DataFrame()
 
-    media_gf_liga_home = float(df_csv['FTHG'].mean()) if not df_csv.empty else 1.45
-    media_gc_liga_home = float(df_csv['FTAG'].mean()) if not df_csv.empty else 1.20
+    media_gf_liga_home = float(df_csv['FTHG'].mean()) if not df_csv.empty else 1.50
+    media_gc_liga_home = float(df_csv['FTAG'].mean()) if not df_csv.empty else 1.25
     media_gf_liga_away = media_gc_liga_home
     media_gc_liga_away = media_gf_liga_home
     media_liga = max((media_gf_liga_home + media_gc_liga_home) / 2.0, 1.25)
@@ -1726,9 +1844,9 @@ if deporte_activo.startswith("⚽"):
         gf_v_puro = float(np.mean(gf_v_adj))
         gc_v_puro = float(np.mean(gc_v_adj))
     else:
-        gf_l_puro = float(p_l['FTHG'].mean()) if not p_l.empty else 1.40
+        gf_l_puro = float(p_l['FTHG'].mean()) if not p_l.empty else 1.45
         gc_l_puro = float(p_l['FTAG'].mean()) if not p_l.empty else 1.20
-        gf_v_puro = float(p_v['FTAG'].mean()) if not p_v.empty else 1.15
+        gf_v_puro = float(p_v['FTAG'].mean()) if not p_v.empty else 1.20
         gc_v_puro = float(p_v['FTHG'].mean()) if not p_v.empty else 1.40
 
     pj_l, pj_v = len(p_l), len(p_v)
@@ -1760,8 +1878,8 @@ if deporte_activo.startswith("⚽"):
     if not usar_blowout:
         factor_blowout_cor = 1.00
 
-    tiene_tiros_csv = ('HS' in df_csv.columns and not p_l['HS'].dropna().empty and not p_v['AS'].dropna().empty)
-    tiene_tarjetas_csv = ('HY' in df_csv.columns and not p_l['HY'].dropna().empty and not p_v['AY'].dropna().empty)
+    tiene_tiros_csv = ('HS' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HS'].dropna().empty and not p_v['AS'].dropna().empty)
+    tiene_tarjetas_csv = ('HY' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HY'].dropna().empty and not p_v['AY'].dropna().empty)
 
     sh_l = (float(p_l['HS'].mean()) if tiene_tiros_csv else round(9.5 + gf_l * 2.4, 1)) * (0.5 + 0.5 * mult_bajas_l)
     sh_v = (float(p_v['AS'].mean()) if tiene_tiros_csv else round(8.5 + gf_v * 2.3, 1)) * (0.5 + 0.5 * mult_bajas_v)
@@ -1823,23 +1941,26 @@ if deporte_activo.startswith("⚽"):
         if tiene_tiros_csv and tiene_tarjetas_csv:
             st.success("✅ Telemetría Completa Opta / Football-Data: Goles, Tiros Totales, Tiros al Arco, Córners, Amarillas y Rojas 100% reales.")
         else:
-            st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
+            st.warning("⚠️ Torneo UEFA / América / Selecciones: El registro oficial contiene Goles Reales verificados partido a partido de los clubes participantes actuales.")
 
-        cols_l = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
-        st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL (Puesto #{info_pos_l['pos']}):**")
-        st.dataframe(p_l[cols_l].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
+        if not p_l.empty:
+            cols_l = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
+            st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL (Puesto #{info_pos_l['pos']}):**")
+            st.dataframe(p_l[cols_l].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
 
-        trad_vis = dict(TRADUCCION_COLS_FUTBOL)
-        trad_vis["FTHG"] = "Goles Local (En Contra)"
-        trad_vis["FTAG"] = "Goles Visita (A Favor)"
-        cols_v = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
-        st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE (Puesto #{info_pos_v['pos']}):**")
-        st.dataframe(p_v[cols_v].rename(columns=trad_vis), use_container_width=True, hide_index=True)
+        if not p_v.empty:
+            trad_vis = dict(TRADUCCION_COLS_FUTBOL)
+            trad_vis["FTHG"] = "Goles Local (En Contra)"
+            trad_vis["FTAG"] = "Goles Visita (A Favor)"
+            cols_v = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
+            st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE (Puesto #{info_pos_v['pos']}):**")
+            st.dataframe(p_v[cols_v].rename(columns=trad_vis), use_container_width=True, hide_index=True)
 
         c_sub1, c_sub2 = st.columns(2)
         with c_sub1:
-            st.markdown("**🏆 Tabla de Posiciones Reconstruida del Torneo:**")
-            st.dataframe(df_tabla_pos, use_container_width=True, hide_index=True)
+            if not df_tabla_pos.empty:
+                st.markdown("**🏆 Tabla de Posiciones Reconstruida del Torneo:**")
+                st.dataframe(df_tabla_pos, use_container_width=True, hide_index=True)
         with c_sub2:
             if not df_refs_stats.empty:
                 st.markdown("**🟨 Rigurosidad Arbitral en la Liga (Datos Reales):**")
@@ -1927,7 +2048,7 @@ if deporte_activo.startswith("⚽"):
 
     with tab3:
         if not tiene_tarjetas_csv:
-            st.warning("⚠️ Esta liga no incluye columnas oficiales de tarjetas en el archivo CSV. No se recomienda operar mercados de tarjetas aquí.")
+            st.warning("⚠️ Esta competición no incluye columnas oficiales de tarjetas en archivo CSV. No se recomienda operar mercados de tarjetas aquí.")
         else:
             st.info(f"📊 Disciplina + Árbitro ({info_arbitro_txt}) + Rivalidad ({etiqueta_clasico}): {eq_l} ({hy_l:.1f} amarillas / {hr_l:.2f} rojas) + {eq_v} ({ay_v:.1f} amarillas / {ar_v:.2f} rojas) × {mult_disciplina_total:.2f}x = {tarj_tot_esp:.2f} tarjetas esperadas.")
             m_tarj = [
@@ -2185,7 +2306,7 @@ elif deporte_activo.startswith("🎾"):
 
 
 # ==============================================================================
-# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - PORTERO TITULAR/SUPLENTE + B2B + SOG)
+# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - SOLO OVER SOG + PIM + HÁNDICAP ABIERTO)
 # ==============================================================================
 elif deporte_activo.startswith("🏒"):
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
@@ -2212,9 +2333,9 @@ elif deporte_activo.startswith("🏒"):
     usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
     mult_bajas_nl, mult_bajas_nv, pct_baja_nl, pct_baja_nv = renderizar_panel_bajas_y_factor("hockey", "nhl", nh_l, nh_v, f"nhl_{nh_l}_{nh_v}")
 
-    with st.spinner(f"Extrayendo boxscores reales de goles y Tiros al Arco (SOG) de {nh_l} y {nh_v}..."):
-        df_nhl_l = extraer_ultimos_partidos_nhl_con_sog(mapa_nhl[nh_l], condicion="HOME", n_partidos=5)
-        df_nhl_v = extraer_ultimos_partidos_nhl_con_sog(mapa_nhl[nh_v], condicion="AWAY", n_partidos=5)
+    with st.spinner(f"Extrayendo boxscores reales de goles, Tiros (SOG) y Penalizaciones (PIM) de {nh_l} y {nh_v}..."):
+        df_nhl_l = extraer_ultimos_partidos_nhl_completo(mapa_nhl[nh_l], condicion="HOME", n_partidos=5)
+        df_nhl_v = extraer_ultimos_partidos_nhl_completo(mapa_nhl[nh_v], condicion="AWAY", n_partidos=5)
 
     b2b_nl, msg_b2b_nl = detectar_fatiga_back_to_back(df_nhl_l, "Fecha")
     b2b_nv, msg_b2b_nv = detectar_fatiga_back_to_back(df_nhl_v, "Fecha")
@@ -2253,9 +2374,20 @@ elif deporte_activo.startswith("🏒"):
     sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv) * (1.06 if b2b_nl else 1.0), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
+    # Cálculo real de Minutos de Penalización (PIM) desde boxscores NHL
+    pim_prop_l = float(df_nhl_l["Min. Penalización (PIM) Propios"].dropna().mean()) if ("Min. Penalización (PIM) Propios" in df_nhl_l and not df_nhl_l["Min. Penalización (PIM) Propios"].dropna().empty) else 8.0
+    pim_riv_l = float(df_nhl_l["Min. Penalización (PIM) Rival"].dropna().mean()) if ("Min. Penalización (PIM) Rival" in df_nhl_l and not df_nhl_l["Min. Penalización (PIM) Rival"].dropna().empty) else 8.0
+    pim_prop_v = float(df_nhl_v["Min. Penalización (PIM) Propios"].dropna().mean()) if ("Min. Penalización (PIM) Propios" in df_nhl_v and not df_nhl_v["Min. Penalización (PIM) Propios"].dropna().empty) else 8.5
+    pim_riv_v = float(df_nhl_v["Min. Penalización (PIM) Rival"].dropna().mean()) if ("Min. Penalización (PIM) Rival" in df_nhl_v and not df_nhl_v["Min. Penalización (PIM) Rival"].dropna().empty) else 8.0
+
+    pim_esp_loc = round((pim_prop_l + pim_riv_v) / 2.0, 1)
+    pim_esp_vis = round((pim_prop_v + pim_riv_l) / 2.0, 1)
+    pim_totales_esp = round(pim_esp_loc + pim_esp_vis, 1)
+
     lam_nhl_l = max((gf_nhl_l * gc_nhl_v) / media_nhl_global, 0.50)
     lam_nhl_v = max((gf_nhl_v * gc_nhl_l) / media_nhl_global, 0.50)
     tot_nhl = lam_nhl_l + lam_nhl_v
+    diff_goles_nhl = lam_nhl_l - lam_nhl_v
 
     mat_n = np.zeros((13, 13))
     for i in range(13):
@@ -2280,52 +2412,82 @@ elif deporte_activo.startswith("🏒"):
         nh_l, nh_v, logo_nh_l, fb_nh_l, logo_nh_v, fb_nh_v,
         "🏒 NHL HOCKEY • LOCAL VS. VISITA",
         f"{lam_nhl_l:.2f}  —  {lam_nhl_v:.2f}",
-        f"Goles Esp. (60m): {tot_nhl:.2f} • Tiros al Arco (SOG) Esp.: {sog_totales_esp}",
+        f"Goles Esp.: {tot_nhl:.2f} • SOG Esp.: {sog_totales_esp} • Min. Penalización (PIM) Esp.: {pim_totales_esp} min",
         p_ml_l, None, p_ml_v, pct_baja_nl, pct_baja_nv,
         badge_extra=" | ".join(alertas_nhl)
     )
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles y Tiros al Arco (SOG) Reales ({nh_l} Local vs {nh_v} Visita)", expanded=False):
-        st.success("✅ Datos extraídos en vivo desde los Boxscores Oficiales de la NHL filtrados por Localía (`HOME`) y Gira (`AWAY`).")
-        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. Tiros al Arco: {sog_f_l:.1f} a favor / {sog_c_l:.1f} en contra):**")
+    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles, Tiros (SOG) y Minutos Penalización (PIM) Reales ({nh_l} vs {nh_v})", expanded=False):
+        st.success("✅ Datos extraídos en vivo desde los Boxscores Oficiales de la NHL (`api-web.nhle.com`).")
+        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. SOG: {sog_f_l:.1f} | Prom. PIM propios: {pim_prop_l:.1f} min):**")
         if not df_nhl_l.empty:
             st.dataframe(df_nhl_l, use_container_width=True, hide_index=True)
 
-        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. Tiros al Arco: {sog_f_v:.1f} a favor / {sog_c_v:.1f} en contra):**")
+        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. SOG: {sog_f_v:.1f} | Prom. PIM propios: {pim_prop_v:.1f} min):**")
         if not df_nhl_v.empty:
             st.dataframe(df_nhl_v, use_container_width=True, hide_index=True)
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🟠 2. Cuotas Betano NHL (Goles & SOG)")
+    st.sidebar.markdown("### 🟠 2. Cuotas Betano NHL (ML, Hándicap & Goles)")
     c_nh_l = st.sidebar.number_input(f"Moneyline {nh_l} (Inc. OT)", 1.01, 20.0, round(1/max(p_ml_l*1.05, 0.05), 2), 0.05)
     c_nh_v = st.sidebar.number_input(f"Moneyline {nh_v} (Inc. OT)", 1.01, 20.0, round(1/max(p_ml_v*1.05, 0.05), 2), 0.05)
+
+    # Hándicap abierto configurable (+ o -) igual que en NBA/NFL
+    handicap_nhl_loc = st.sidebar.number_input(f"Hándicap / Puck Line {nh_l} (ej. -1.5, +1.5, -2.5)", -6.5, 6.5, -1.5 if diff_goles_nhl > 0.35 else 1.5, 0.5)
+    c_hc_nhl_l = st.sidebar.number_input(f"Cuota {nh_l} ({handicap_nhl_loc:+.1f})", 1.01, 15.0, 2.25 if handicap_nhl_loc < 0 else 1.65, 0.05)
+    c_hc_nhl_v = st.sidebar.number_input(f"Cuota {nh_v} ({-handicap_nhl_loc:+.1f})", 1.01, 15.0, 1.65 if handicap_nhl_loc < 0 else 2.25, 0.05)
+
     linea_nhl = st.sidebar.selectbox("Línea Goles Totales NHL", [5.5, 6.0, 6.5], index=2)
     c_ov_nhl = st.sidebar.number_input(f"Cuota Over {linea_nhl} Goles", 1.01, 15.0, 1.88, 0.05)
     c_un_nhl = st.sidebar.number_input(f"Cuota Under {linea_nhl} Goles", 1.01, 15.0, 1.92, 0.05)
 
-    with st.sidebar.expander("🎯 Líneas y Cuotas Tiros al Arco (SOG)", expanded=True):
-        linea_sog_tot = st.number_input("Línea Tiros al Arco Totales", 40.5, 80.5, float(int(sog_totales_esp) + 0.5), 1.0)
+    with st.sidebar.expander("🎯 Líneas Tiros (Solo Over) y Penalizaciones (PIM)", expanded=True):
+        linea_sog_tot = st.number_input("Línea Tiros al Arco Totales (Over)", 40.5, 80.5, float(int(sog_totales_esp) + 0.5), 1.0)
         c_ov_sog = st.number_input(f"Cuota Over {linea_sog_tot} Tiros", 1.01, 15.0, 1.87, 0.05)
-        c_un_sog = st.number_input(f"Cuota Under {linea_sog_tot} Tiros", 1.01, 15.0, 1.87, 0.05)
-        linea_sog_loc = st.number_input(f"Línea Tiros {nh_l} (Local)", 18.5, 45.5, float(int(sog_esp_loc) + 0.5), 1.0)
+        linea_sog_loc = st.number_input(f"Línea Tiros {nh_l} Local (Over)", 18.5, 45.5, float(int(sog_esp_loc) + 0.5), 1.0)
         c_ov_sog_l = st.number_input(f"Cuota Over {linea_sog_loc} Tiros {nh_l}", 1.01, 15.0, 1.85, 0.05)
+        st.markdown("---")
+        linea_pim_tot = st.number_input("⏱️ Línea Minutos Penalización (PIM)", 4.5, 35.5, float(int(pim_totales_esp) + 0.5), 1.0)
+        c_ov_pim = st.number_input(f"Cuota Over {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
+        c_un_pim = st.number_input(f"Cuota Under {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
+
+    # Probabilidad exacta del Hándicap desde la matriz de goles NHL (ajustando prórroga)
+    p_hc_nhl_l = 0.0
+    for i in range(13):
+        for j in range(13):
+            if i == j:
+                # Si hay empate a 60', el ganador en prórroga gana por +1 gol
+                p_ot_l = lam_nhl_l / max(tot_nhl, 0.1)
+                if (1.0 + handicap_nhl_loc) > 0:
+                    p_hc_nhl_l += float(mat_n[i, j]) * p_ot_l
+                if (-1.0 + handicap_nhl_loc) > 0:
+                    p_hc_nhl_l += float(mat_n[i, j]) * (1.0 - p_ot_l)
+            else:
+                if ((i - j) + handicap_nhl_loc) > 0:
+                    p_hc_nhl_l += float(mat_n[i, j])
+    p_hc_nhl_l = float(np.clip(p_hc_nhl_l, 0.02, 0.98))
+    p_hc_nhl_v = 1.0 - p_hc_nhl_l
 
     p_ov_nhl = 1.0 - sum(poisson.pmf(k, tot_nhl) for k in range(int(linea_nhl) + 1))
     p_ov_sog_tot = float(1.0 - norm.cdf(linea_sog_tot, loc=sog_totales_esp, scale=6.8))
     p_ov_sog_l = float(1.0 - norm.cdf(linea_sog_loc, loc=sog_esp_loc, scale=4.8))
+    p_ov_pim = float(1.0 - norm.cdf(linea_pim_tot, loc=pim_totales_esp, scale=4.6))
+    p_un_pim = 1.0 - p_ov_pim
 
     nk1, nk2, nk3, nk4 = st.columns(4)
     nk1.metric("🏒 Goles Esp. (60m)", f"{lam_nhl_l:.2f} - {lam_nhl_v:.2f}", f"Total: {tot_nhl:.2f} goles")
-    nk2.metric("🏆 Prob. Moneyline", f"{p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%", f"Empate 60': {p_emp*100:.1f}%")
+    nk2.metric("⚖️ Hándicap NHL", f"{nh_l} {handicap_nhl_loc:+.1f}: {p_hc_nhl_l*100:.1f}%", f"ML: {p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%")
     nk3.metric("🎯 Tiros al Arco Esp.", f"{sog_totales_esp} tiros", f"{sog_esp_loc} L + {sog_esp_vis} V")
-    nk4.metric("📈 Prob. Over Goles", f"{p_ov_nhl*100:.1f}% Over {linea_nhl}", f"{(1-p_ov_nhl)*100:.1f}% Under {linea_nhl}")
+    nk4.metric("⏱️ Min. Penalización (PIM)", f"{pim_totales_esp} min", f"{pim_esp_loc} L + {pim_esp_vis} V")
 
     CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
-    ntab1, ntab2, ntab3 = st.tabs(["🏆 1. Mercados Goles & ML", "🎯 2. Tiros al Arco (SOG)", "🔴 3. Radar En Vivo"])
+    ntab1, ntab2, ntab3 = st.tabs(["🏆 1. Goles, ML y Hándicap", "🎯 2. Tiros (Over) & Penalizaciones (PIM)", "🔴 3. Radar En Vivo"])
     with ntab1:
         m_nhl = [
             (f"Moneyline: Gana {nh_l} (Inc. Prórroga)", p_ml_l, c_nh_l),
             (f"Moneyline: Gana {nh_v} (Inc. Prórroga)", p_ml_v, c_nh_v),
+            (f"Hándicap / Puck Line: {nh_l} ({handicap_nhl_loc:+.1f})", p_hc_nhl_l, c_hc_nhl_l),
+            (f"Hándicap / Puck Line: {nh_v} ({-handicap_nhl_loc:+.1f})", p_hc_nhl_v, c_hc_nhl_v),
             (f"Total: Más de {linea_nhl} Goles (Over)", p_ov_nhl, c_ov_nhl),
             (f"Total: Menos de {linea_nhl} Goles (Under)", 1.0 - p_ov_nhl, c_un_nhl)
         ]
@@ -2333,13 +2495,14 @@ elif deporte_activo.startswith("🏒"):
         st.dataframe(df_nh1.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with ntab2:
-        m_sog = [
-            (f"🎯 Más de {linea_sog_tot} Tiros al Arco Totales (Over)", p_ov_sog_tot, c_ov_sog),
-            (f"🎯 Menos de {linea_sog_tot} Tiros al Arco Totales (Under)", 1.0 - p_ov_sog_tot, c_un_sog),
-            (f"🎯 {nh_l}: Más de {linea_sog_loc} Tiros al Arco (Over)", p_ov_sog_l, c_ov_sog_l),
-            (f"🎯 {nh_l}: Menos de {linea_sog_loc} Tiros al Arco (Under)", 1.0 - p_ov_sog_l, 1.85)
+        # Únicamente Over en Shots on Goal (SOG) + Mercados de Minutos de Penalización (PIM)
+        m_sog_pim = [
+            (f"🎯 Más de {linea_sog_tot} Shots on Goal Totales (Over)", p_ov_sog_tot, c_ov_sog),
+            (f"🎯 {nh_l}: Más de {linea_sog_loc} Shots on Goal (Over)", p_ov_sog_l, c_ov_sog_l),
+            (f"⏱️ Más de {linea_pim_tot} Minutos de Penalización Totales (Over PIM)", p_ov_pim, c_ov_pim),
+            (f"⏱️ Menos de {linea_pim_tot} Minutos de Penalización Totales (Under PIM)", p_un_pim, c_un_pim)
         ]
-        df_nh2 = construir_tabla_mercados_kelly(m_sog, "Mercado Tiros al Arco (SOG)", banca_usuario, fraccion_kelly_val, min_prob_filtro, min_edge_filtro)
+        df_nh2 = construir_tabla_mercados_kelly(m_sog_pim, "Mercado Tiros (Over) y Penalizaciones (PIM)", banca_usuario, fraccion_kelly_val, min_prob_filtro, min_edge_filtro)
         st.dataframe(df_nh2.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with ntab3:
