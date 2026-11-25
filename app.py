@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 17.4 | NHL 2-Min Minor Penalties & Quant Suite",
+    page_title="Pro Bet Analyzer 17.5 | Multi-Sport Bayesian & Injury Calibration",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -287,8 +287,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 17.4 <span style="color:#ff8c00;">| NHL 2-MIN MINOR PENALTIES & QUANT</span></h1>
-<p>Penalizaciones Exactas de 2 Minutos NHL (Partido, Local y Visita) • Calibración Bayesiana Fútbol/UEFA • Bitácora & Kelly</p>
+<h1>🏆 PRO BET ANALYZER 17.5 <span style="color:#ff8c00;">| MULTI-SPORT BAYESIAN CALIBRATED</span></h1>
+<p>Calibración Integral de Bajas y Varianza en los 6 Deportes (Fútbol, NBA, NFL, NHL, Tenis y MLB) • Kelly & Bitácora Inteligente</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -920,19 +920,19 @@ def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
 
                     est_low = est_raw.lower()
                     if any(k in est_low for k in ["out", "injured", "ir", "suspen"]):
-                        base_w = 3.0
+                        base_w = 2.2
                     elif "doubtful" in est_low:
-                        base_w = 2.0
+                        base_w = 1.5
                     elif any(k in est_low for k in ["questionable", "day"]):
-                        base_w = 1.0
+                        base_w = 0.75
                     else:
                         base_w = 0.0
 
                     pos_up = str(pos).upper()
                     if pos_up in ["QB"]:
-                        base_w *= 4.5
+                        base_w *= 4.0
                     elif pos_up in ["FW", "ST", "CF", "LW", "RW", "PG", "SG", "SF", "PF", "C", "P", "SP"]:
-                        base_w *= 1.35
+                        base_w *= 1.25
 
                     filas_inj.append({
                         "Equipo": etiqueta_eq,
@@ -979,12 +979,12 @@ def calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis):
         txt = f"{hl} {desc}".lower()
         if any(pa in txt for pa in palabras_alerta):
             if any(kl in txt for kl in claves_l):
-                raw_l += 2.5
+                raw_l += 1.5
             if any(kv in txt for kv in claves_v):
-                raw_v += 2.5
+                raw_v += 1.5
 
-    pen_l = int(min(max(round(raw_l / 5.0) * 5, 0), 30))
-    pen_v = int(min(max(round(raw_v / 5.0) * 5, 0), 30))
+    pen_l = int(min(max(round(raw_l / 5.0) * 5, 0), 25))
+    pen_v = int(min(max(round(raw_v / 5.0) * 5, 0), 25))
     return pen_l, pen_v
 
 def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
@@ -994,11 +994,11 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
 
     with st.expander(f"🏥 INTELIGENCIA AUTOMÁTICA DE BAJAS, LESIONES Y NOTICIAS ({eq_loc} vs. {eq_vis})", expanded=(not df_inj.empty or auto_pen_l > 0 or auto_pen_v > 0)):
         if not df_inj.empty:
-            st.warning(f"⚠️ Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas en API ESPN) — Factor Auto-Calculado: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)")
+            st.warning(f"⚠️ Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas en API ESPN) — Índice Bajas Auto: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)")
             cols_visibles = [c for c in df_inj.columns if not c.startswith("_")]
             st.dataframe(df_inj[cols_visibles].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
         else:
-            st.info(f"ℹ️ Sin reporte médico activo en el feed público de ESPN para {eq_loc} vs. {eq_vis} (Factor Auto-Calculado: -{auto_pen_l}% / -{auto_pen_v}%).")
+            st.info(f"ℹ️ Sin reporte médico activo en el feed público de ESPN para {eq_loc} vs. {eq_vis} (Índice Bajas: -{auto_pen_l}% / -{auto_pen_v}%).")
 
         if noticias:
             st.markdown("**🗞️ Últimas Noticias Relevantes Analizadas:**")
@@ -1006,10 +1006,10 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
                 st.markdown(f"📰 **[{f_n}] {hl}** — _{desc[:140]}_")
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🏥 Factor de Incidencia (Auto)")
+    st.sidebar.markdown("### 🏥 Factor de Incidencia (Calibrado)")
     st.sidebar.caption(f"🤖 Auto-detección: **{eq_loc} (-{auto_pen_l}%)** | **{eq_vis} (-{auto_pen_v}%)**")
-    imp_loc = st.sidebar.slider(f"Penalización {eq_loc} (%)", 0, 30, auto_pen_l, 5, key=f"imp_l_{key_prefix}")
-    imp_vis = st.sidebar.slider(f"Penalización {eq_vis} (%)", 0, 30, auto_pen_v, 5, key=f"imp_v_{key_prefix}")
+    imp_loc = st.sidebar.slider(f"Nivel Bajas {eq_loc} (%)", 0, 25, auto_pen_l, 5, key=f"imp_l_{key_prefix}")
+    imp_vis = st.sidebar.slider(f"Nivel Bajas {eq_vis} (%)", 0, 25, auto_pen_v, 5, key=f"imp_v_{key_prefix}")
     return 1.0 - (imp_loc / 100.0), 1.0 - (imp_vis / 100.0), imp_loc, imp_vis
 
 # ==============================================================================
@@ -1125,12 +1125,6 @@ def obtener_catalogo_equipos_nhl():
 
 @st.cache_data(ttl=1200)
 def obtener_boxscore_y_penalizaciones_2min_nhl(game_id):
-    """
-    Extrae desde api-web.nhle.com:
-    - Shots on Goal (SOG) Local y Visita
-    - Conteo EXACTO de Penalizaciones Menores de 2 Minutos (duration == 2) para Local y Visita
-      desde el endpoint oficial /landing (excluyendo mayores de 5 min y malas conductas de 10 min).
-    """
     h_sog, a_sog, h_pen2, a_pen2 = 0, 0, 0, 0
     try:
         r_land = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/landing", headers=HEADERS_HTTP, timeout=6).json()
@@ -1141,7 +1135,6 @@ def obtener_boxscore_y_penalizaciones_2min_nhl(game_id):
         h_sog = int(h_tm.get("sog", 0))
         a_sog = int(a_tm.get("sog", 0))
 
-        # Recorrer todas las penalizaciones del resumen oficial y contar ÚNICAMENTE las de 2 minutos
         pen_periods = r_land.get("summary", {}).get("penalties", [])
         for per in pen_periods:
             for p_item in per.get("penalties", []):
@@ -1156,7 +1149,6 @@ def obtener_boxscore_y_penalizaciones_2min_nhl(game_id):
     except Exception:
         pass
 
-    # Respaldo de SOG si faltara en landing
     if h_sog == 0 and a_sog == 0:
         try:
             r_box = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=5).json()
@@ -1446,7 +1438,7 @@ def calcular_perfil_superficie_real(df_partidos, rank_actual, circuito, nombre_t
                     jg_rec = float(ult_s["J_Gan"].sum())
                     jp_rec = float(ult_s["J_Per"].sum())
                     ratio_j = ((jg_tot + jg_rec) / max(jg_tot + jp_tot + jg_rec + jp_rec, 1.0))
-                    ajuste = (ratio_j - 0.50) * 28.0
+                    ajuste = (ratio_j - 0.50) * 24.0
                     stats_sup[sup_k]["Hold"] = round(float(np.clip(stats_sup[sup_k]["Hold"] + ajuste, 58.0, 94.0)), 1)
                     stats_sup[sup_k]["Break"] = round(float(np.clip(stats_sup[sup_k]["Break"] + ajuste * 0.8, 15.0, 54.0)), 1)
                     stats_sup[sup_k]["Juegos_Prom"] = round(float((jg_tot + jp_tot) / len(sub_s)), 1)
@@ -2161,7 +2153,7 @@ if deporte_activo.startswith("⚽"):
 
 
 # ==============================================================================
-# 2. MÓDULO TENIS (SUPERFICIE 2X + DESGASTE TORNEO + INDOOR/ALTURA + ACES)
+# 2. MÓDULO TENIS (SUPERFICIE 2X + DESGASTE CALIBRADO + INDOOR/ALTURA + ACES)
 # ==============================================================================
 elif deporte_activo.startswith("🎾"):
     st.sidebar.markdown("### 🎾 1. Circuito, Superficie y Tenistas")
@@ -2219,15 +2211,15 @@ elif deporte_activo.startswith("🎾"):
     b2b_ta, msg_b2b_ta = detectar_fatiga_back_to_back(df_part_a, "Fecha")
     b2b_tb, msg_b2b_tb = detectar_fatiga_back_to_back(df_part_b, "Fecha")
     if b2b_ta:
-        auto_fat_a = min(auto_fat_a + 5, 25)
+        auto_fat_a = min(auto_fat_a + 5, 20)
     if b2b_tb:
-        auto_fat_b = min(auto_fat_b + 5, 25)
+        auto_fat_b = min(auto_fat_b + 5, 20)
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🏥 Factor Físico / Desgaste Torneo")
     st.sidebar.caption(f"🤖 Auto-cálculo: **{jug_a} (-{auto_fat_a}%)** | **{jug_b} (-{auto_fat_b}%)**")
-    fat_a = st.sidebar.slider(f"Penalización Físico {jug_a} (%)", 0, 25, min(auto_fat_a, 25), 5)
-    fat_b = st.sidebar.slider(f"Penalización Físico {jug_b} (%)", 0, 25, min(auto_fat_b, 25), 5)
+    fat_a = st.sidebar.slider(f"Desgaste Físico {jug_a} (%)", 0, 20, min(auto_fat_a, 20), 5)
+    fat_b = st.sidebar.slider(f"Desgaste Físico {jug_b} (%)", 0, 20, min(auto_fat_b, 20), 5)
 
     sup_a = calcular_perfil_superficie_real(df_part_a, rank_a, circuito, jug_a)
     sup_b = calcular_perfil_superficie_real(df_part_b, rank_b, circuito, jug_b)
@@ -2245,17 +2237,18 @@ elif deporte_activo.startswith("🎾"):
         bg_cancha_card = "linear-gradient(135deg, #0f172a 0%, #1d4ed8 50%, #0284c7 100%)"
         borde_cancha_card = "#60a5fa"
 
-    hold_a_sup = sup_a[clave_sup]["Hold"] * (1.0 - (fat_a / 200.0))
-    brk_a_sup = sup_a[clave_sup]["Break"] * (1.0 - (fat_a / 200.0))
-    hold_b_sup = sup_b[clave_sup]["Hold"] * (1.0 - (fat_b / 200.0))
-    brk_b_sup = sup_b[clave_sup]["Break"] * (1.0 - (fat_b / 200.0))
+    # Penalización física suavizada para reflejar desgaste real sin distorsionar probabilidades
+    hold_a_sup = sup_a[clave_sup]["Hold"] * (1.0 - (fat_a / 320.0))
+    brk_a_sup = sup_a[clave_sup]["Break"] * (1.0 - (fat_a / 320.0))
+    hold_b_sup = sup_b[clave_sup]["Hold"] * (1.0 - (fat_b / 320.0))
+    brk_b_sup = sup_b[clave_sup]["Break"] * (1.0 - (fat_b / 320.0))
 
     hold_eff_a = (hold_a_sup + (100.0 - brk_b_sup)) / 2.0
     hold_eff_b = (hold_b_sup + (100.0 - brk_a_sup)) / 2.0
-    bono_rank_a = (np.log10(max(rank_b, 1)) - np.log10(max(rank_a, 1))) * 4.8
+    bono_rank_a = (np.log10(max(rank_b, 1)) - np.log10(max(rank_a, 1))) * 4.5
     diff_efectivo = (hold_eff_a - hold_eff_b) + bono_rank_a
 
-    p_set_a = float(np.clip(0.50 + (diff_efectivo / 100.0) * 2.25, 0.08, 0.92))
+    p_set_a = float(np.clip(0.50 + (diff_efectivo / 100.0) * 2.15, 0.10, 0.90))
     p_set_b = 1.0 - p_set_a
     if "3 Sets" in formato_sets:
         p_gana_a = float((p_set_a ** 2) + 2.0 * (p_set_a ** 2) * p_set_b)
@@ -2273,8 +2266,8 @@ elif deporte_activo.startswith("🎾"):
     ajuste_resto_vs_a = np.clip(1.0 + ((media_brk_circuito - brk_b_sup) / 100.0) * 1.15, 0.78, 1.25)
     ajuste_resto_vs_b = np.clip(1.0 + ((media_brk_circuito - brk_a_sup) / 100.0) * 1.15, 0.78, 1.25)
 
-    aces_esp_a = round(sup_a[clave_sup]["Aces"] * ajuste_resto_vs_a * factor_formato_aces * mult_pista_aces * (1.0 - fat_a / 150.0), 1)
-    aces_esp_b = round(sup_b[clave_sup]["Aces"] * ajuste_resto_vs_b * factor_formato_aces * mult_pista_aces * (1.0 - fat_b / 150.0), 1)
+    aces_esp_a = round(sup_a[clave_sup]["Aces"] * ajuste_resto_vs_a * factor_formato_aces * mult_pista_aces * (1.0 - fat_a / 200.0), 1)
+    aces_esp_b = round(sup_b[clave_sup]["Aces"] * ajuste_resto_vs_b * factor_formato_aces * mult_pista_aces * (1.0 - fat_b / 200.0), 1)
     aces_totales_esp = round(aces_esp_a + aces_esp_b, 1)
 
     favorito_nom = jug_a if p_gana_a >= p_gana_b else jug_b
@@ -2361,8 +2354,8 @@ elif deporte_activo.startswith("🎾"):
         c_ov_aces = st.number_input(f"Cuota Más de {linea_aces_ten} Aces (Over)", 1.01, 15.0, 1.85, 0.05)
         c_un_aces = st.number_input(f"Cuota Menos de {linea_aces_ten} Aces (Under)", 1.01, 15.0, 1.85, 0.05)
 
-    p_over_juegos = float(1.0 - norm.cdf(linea_j_ten, loc=juegos_totales_esp, scale=3.4))
-    sigma_aces = max(np.sqrt(aces_totales_esp * 1.35), 2.2)
+    p_over_juegos = float(1.0 - norm.cdf(linea_j_ten, loc=juegos_totales_esp, scale=3.6))
+    sigma_aces = max(np.sqrt(aces_totales_esp * 1.45), 2.4)
     p_over_aces = float(1.0 - norm.cdf(linea_aces_ten, loc=aces_totales_esp, scale=sigma_aces))
     p_under_aces = 1.0 - p_over_aces
 
@@ -2391,7 +2384,7 @@ elif deporte_activo.startswith("🎾"):
 
 
 # ==============================================================================
-# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - SOLO OVER SOG + PENALIZACIONES 2 MINUTOS)
+# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - CALIBRADO BAYESIANO + PENALIZACIONES 2')
 # ==============================================================================
 elif deporte_activo.startswith("🏒"):
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
@@ -2410,12 +2403,12 @@ elif deporte_activo.startswith("🏒"):
 
     st.sidebar.markdown("### 🥅 Porteros Confirmados (Goalies)")
     g_col1, g_col2 = st.sidebar.columns(2)
-    portero_l = g_col1.selectbox(f"Arco {nh_l[:12]}", ["Titular (1.00x)", "Suplente (+11% GC)"])
-    portero_v = g_col2.selectbox(f"Arco {nh_v[:12]}", ["Titular (1.00x)", "Suplente (+11% GC)"])
-    mult_portero_l = 1.11 if "Suplente" in portero_l else 1.00
-    mult_portero_v = 1.11 if "Suplente" in portero_v else 1.00
+    portero_l = g_col1.selectbox(f"Arco {nh_l[:12]}", ["Titular (1.00x)", "Suplente (+10% GC)"])
+    portero_v = g_col2.selectbox(f"Arco {nh_v[:12]}", ["Titular (1.00x)", "Suplente (+10% GC)"])
+    mult_portero_l = 1.10 if "Suplente" in portero_l else 1.00
+    mult_portero_v = 1.10 if "Suplente" in portero_v else 1.00
 
-    usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
+    usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=True)
     mult_bajas_nl, mult_bajas_nv, pct_baja_nl, pct_baja_nv = renderizar_panel_bajas_y_factor("hockey", "nhl", nh_l, nh_v, f"nhl_{nh_l}_{nh_v}")
 
     with st.spinner(f"Extrayendo goles, Tiros (SOG) y Penalizaciones de 2 Minutos de {nh_l} y {nh_v}..."):
@@ -2424,8 +2417,8 @@ elif deporte_activo.startswith("🏒"):
 
     b2b_nl, msg_b2b_nl = detectar_fatiga_back_to_back(df_nhl_l, "Fecha")
     b2b_nv, msg_b2b_nv = detectar_fatiga_back_to_back(df_nhl_v, "Fecha")
-    mult_b2b_of_l = 0.92 if b2b_nl else 1.00
-    mult_b2b_of_v = 0.92 if b2b_nv else 1.00
+    mult_b2b_of_l = 0.94 if b2b_nl else 1.00
+    mult_b2b_of_v = 0.94 if b2b_nv else 1.00
 
     media_nhl_home, media_nhl_away, media_nhl_global = 3.18, 2.92, 3.05
 
@@ -2435,18 +2428,20 @@ elif deporte_activo.startswith("🏒"):
     gc_v_puro = float(df_nhl_v["Goles en Contra"].mean()) if not df_nhl_v.empty else media_nhl_home
 
     pj_nhl_l, pj_nhl_v = len(df_nhl_l), len(df_nhl_v)
-    if usar_bayes_nhl:
-        peso_nl = min(pj_nhl_l / 6.0, 1.0)
-        peso_nv = min(pj_nhl_v / 6.0, 1.0)
-        gf_nhl_l = (peso_nl * gf_l_puro) + ((1.0 - peso_nl) * media_nhl_home)
-        gc_nhl_l = (peso_nl * gc_l_puro) + ((1.0 - peso_nl) * media_nhl_away)
-        gf_nhl_v = (peso_nv * gf_v_puro) + ((1.0 - peso_nv) * media_nhl_away)
-        gc_nhl_v = (peso_nv * gc_v_puro) + ((1.0 - peso_nv) * media_nhl_home)
-    else:
-        gf_nhl_l, gc_nhl_l, gf_nhl_v, gc_nhl_v = gf_l_puro, gc_l_puro, gf_v_puro, gc_v_puro
+    peso_nl = min(pj_nhl_l / 6.0, 1.0) if usar_bayes_nhl else 1.0
+    peso_nv = min(pj_nhl_v / 6.0, 1.0) if usar_bayes_nhl else 1.0
 
-    gf_nhl_l = gf_nhl_l * mult_bajas_nl * mult_b2b_of_l
-    gf_nhl_v = gf_nhl_v * mult_bajas_nv * mult_b2b_of_v
+    gf_nhl_l = (peso_nl * gf_l_puro) + ((1.0 - peso_nl) * media_nhl_home)
+    gc_nhl_l = (peso_nl * gc_l_puro) + ((1.0 - peso_nl) * media_nhl_away)
+    gf_nhl_v = (peso_nv * gf_v_puro) + ((1.0 - peso_nv) * media_nhl_away)
+    gc_nhl_v = (peso_nv * gc_v_puro) + ((1.0 - peso_nv) * media_nhl_home)
+
+    # Impacto de bajas amortiguado al 55% en NHL (rotación de 4 líneas absorbe tiempo en hielo)
+    factor_bajas_real_nl = 1.0 - ((pct_baja_nl / 100.0) * 0.55)
+    factor_bajas_real_nv = 1.0 - ((pct_baja_nv / 100.0) * 0.55)
+
+    gf_nhl_l = gf_nhl_l * factor_bajas_real_nl * mult_b2b_of_l
+    gf_nhl_v = gf_nhl_v * factor_bajas_real_nv * mult_b2b_of_v
     gc_nhl_l = gc_nhl_l * mult_portero_l
     gc_nhl_v = gc_nhl_v * mult_portero_v
 
@@ -2455,11 +2450,10 @@ elif deporte_activo.startswith("🏒"):
     sog_f_v = float(df_nhl_v["Tiros al Arco (SOG) Favor"].dropna().mean()) if ("Tiros al Arco (SOG) Favor" in df_nhl_v and not df_nhl_v["Tiros al Arco (SOG) Favor"].dropna().empty) else 28.0
     sog_c_v = float(df_nhl_v["Tiros al Arco (SOG) Contra"].dropna().mean()) if ("Tiros al Arco (SOG) Contra" in df_nhl_v and not df_nhl_v["Tiros al Arco (SOG) Contra"].dropna().empty) else 30.0
 
-    sog_esp_loc = round(((sog_f_l + sog_c_v) / 2.0) * (0.6 + 0.4 * mult_bajas_nl) * (1.06 if b2b_nv else 1.0), 1)
-    sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv) * (1.06 if b2b_nl else 1.0), 1)
+    sog_esp_loc = round(((sog_f_l + sog_c_v) / 2.0) * (0.7 + 0.3 * factor_bajas_real_nl) * (1.05 if b2b_nv else 1.0), 1)
+    sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.7 + 0.3 * factor_bajas_real_nv) * (1.05 if b2b_nl else 1.0), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
-    # Conteo real de Penalizaciones Menores de 2 Minutos (cometidas y provocadas)
     p2_prop_l_s = df_nhl_l["Penalizaciones 2' Propias"].dropna() if "Penalizaciones 2' Propias" in df_nhl_l else pd.Series(dtype=float)
     p2_riv_l_s = df_nhl_l["Penalizaciones 2' Rival"].dropna() if "Penalizaciones 2' Rival" in df_nhl_l else pd.Series(dtype=float)
     p2_prop_v_s = df_nhl_v["Penalizaciones 2' Propias"].dropna() if "Penalizaciones 2' Propias" in df_nhl_v else pd.Series(dtype=float)
@@ -2470,7 +2464,6 @@ elif deporte_activo.startswith("🏒"):
     pen2_prop_v = float(p2_prop_v_s.mean()) if not p2_prop_v_s.empty else 3.8
     pen2_riv_v = float(p2_riv_v_s.mean()) if not p2_riv_v_s.empty else 3.5
 
-    # Penalizaciones de 2 minutos esperadas (cruce entre indisciplina propia y capacidad de provocar del rival)
     lam_pen2_loc = round(max((pen2_prop_l + pen2_riv_v) / 2.0, 1.2), 2)
     lam_pen2_vis = round(max((pen2_prop_v + pen2_riv_l) / 2.0, 1.2), 2)
     lam_pen2_tot = round(lam_pen2_loc + lam_pen2_vis, 2)
@@ -2570,10 +2563,9 @@ elif deporte_activo.startswith("🏒"):
     p_hc_nhl_v = 1.0 - p_hc_nhl_l
 
     p_ov_nhl = 1.0 - sum(poisson.pmf(k, tot_nhl) for k in range(int(linea_nhl) + 1))
-    p_ov_sog_tot = float(1.0 - norm.cdf(linea_sog_tot, loc=sog_totales_esp, scale=6.8))
-    p_ov_sog_l = float(1.0 - norm.cdf(linea_sog_loc, loc=sog_esp_loc, scale=4.8))
+    p_ov_sog_tot = float(1.0 - norm.cdf(linea_sog_tot, loc=sog_totales_esp, scale=7.2))
+    p_ov_sog_l = float(1.0 - norm.cdf(linea_sog_loc, loc=sog_esp_loc, scale=5.1))
 
-    # Probabilidad exacta de Poisson para "N+" (es decir, >= N penalizaciones de 2 minutos)
     p_pen2_tot_mas = float(1.0 - sum(poisson.pmf(k, lam_pen2_tot) for k in range(int(linea_pen2_tot))))
     p_pen2_loc_mas = float(1.0 - sum(poisson.pmf(k, lam_pen2_loc) for k in range(int(linea_pen2_loc))))
     p_pen2_vis_mas = float(1.0 - sum(poisson.pmf(k, lam_pen2_vis) for k in range(int(linea_pen2_vis))))
@@ -2614,7 +2606,7 @@ elif deporte_activo.startswith("🏒"):
 
 
 # ==============================================================================
-# 4. MÓDULO BALONCESTO (NBA - LOCAL VS VISITA + BACK-TO-BACK + SPREADS)
+# 4. MÓDULO BALONCESTO (NBA - CALIBRADO BAJAS EN PUNTOS REALES + BAYES)
 # ==============================================================================
 elif deporte_activo.startswith("🏀"):
     st.sidebar.markdown("### 🏀 1. Equipos NBA")
@@ -2631,16 +2623,16 @@ elif deporte_activo.startswith("🏀"):
     logo_nb_l, fb_nb_l = buscar_logo_equipo(nb_l, mapa_logos_nba, "#ff6b00")
     logo_nb_v, fb_nb_v = buscar_logo_equipo(nb_v, mapa_logos_nba, "#38bdf8")
 
-    usar_bayes_nba = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NBA (< 6 PJ)", value=False)
-    mult_bajas_nbl, mult_bajas_nbv, pct_b_nbl, pct_b_nbv = renderizar_panel_bajas_y_factor("basketball", "nba", nb_l, nb_v, f"nba_{nb_l}_{nb_v}")
+    usar_bayes_nba = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NBA (< 6 PJ)", value=True)
+    _, _, pct_b_nbl, pct_b_nbv = renderizar_panel_bajas_y_factor("basketball", "nba", nb_l, nb_v, f"nba_{nb_l}_{nb_v}")
 
     df_nba_l = extraer_ultimos_partidos_reales_espn("basketball", "nba", mapa_nba[nb_l], nb_l, n_partidos=5, condicion_filtro="HOME")
     df_nba_v = extraer_ultimos_partidos_reales_espn("basketball", "nba", mapa_nba[nb_v], nb_v, n_partidos=5, condicion_filtro="AWAY")
 
     b2b_nbl, msg_b2b_nbl = detectar_fatiga_back_to_back(df_nba_l, "Fecha")
     b2b_nbv, msg_b2b_nbv = detectar_fatiga_back_to_back(df_nba_v, "Fecha")
-    pen_b2b_nba_l = -3.5 if b2b_nbl else 0.0
-    pen_b2b_nba_v = -3.5 if b2b_nbv else 0.0
+    pen_b2b_nba_l = -3.0 if b2b_nbl else 0.0
+    pen_b2b_nba_v = -3.0 if b2b_nbv else 0.0
 
     media_nba_home, media_nba_away = 114.5, 111.5
     pf_l_puro = float(df_nba_l["Puntos/Carreras a Favor"].mean()) if not df_nba_l.empty else media_nba_home
@@ -2658,21 +2650,25 @@ elif deporte_activo.startswith("🏀"):
     else:
         pf_l, pa_l, pf_v, pa_v = pf_l_puro, pa_l_puro, pf_v_puro, pa_v_puro
 
-    pf_l = (pf_l * mult_bajas_nbl) + pen_b2b_nba_l
-    pf_v = (pf_v * mult_bajas_nbv) + pen_b2b_nba_v
+    # Calibración NBA: -1.4 pts reales por cada 5% de bajas (máximo -6.0 pts), no porcentaje bruto
+    ajuste_pts_bajas_l = -min((pct_b_nbl / 5.0) * 1.4, 6.0)
+    ajuste_pts_bajas_v = -min((pct_b_nbv / 5.0) * 1.4, 6.0)
+
+    pf_l = pf_l + ajuste_pts_bajas_l + pen_b2b_nba_l
+    pf_v = pf_v + ajuste_pts_bajas_v + pen_b2b_nba_v
 
     proy_l = (pf_l + pa_v) / 2.0
     proy_v = (pf_v + pa_l) / 2.0
     tot_nba = proy_l + proy_v
     spread_esp_nba = proy_l - proy_v
-    p_ml_l = float(1.0 - norm.cdf(0.0, loc=spread_esp_nba, scale=11.8))
+    p_ml_l = float(1.0 - norm.cdf(0.0, loc=spread_esp_nba, scale=13.8))
     p_ml_v = 1.0 - p_ml_l
 
     alertas_nba = []
     if b2b_nbl:
-        alertas_nba.append(f"⚡ B2B {nb_l} (-3.5 pts)")
+        alertas_nba.append(f"⚡ B2B {nb_l} (-3.0 pts)")
     if b2b_nbv:
-        alertas_nba.append(f"⚡ B2B {nb_v} (-3.5 pts)")
+        alertas_nba.append(f"⚡ B2B {nb_v} (-3.0 pts)")
 
     renderizar_hero_card_deporte(
         nb_l, nb_v, logo_nb_l, fb_nb_l, logo_nb_v, fb_nb_v,
@@ -2703,9 +2699,9 @@ elif deporte_activo.startswith("🏀"):
     c_ov_nba = st.sidebar.number_input(f"Cuota Más de {linea_nba} (Over)", 1.01, 15.0, 1.90, 0.05)
     c_un_nba = st.sidebar.number_input(f"Cuota Menos de {linea_nba} (Under)", 1.01, 15.0, 1.90, 0.05)
 
-    p_sp_nba_l = float(1.0 - norm.cdf(-spread_linea_nba, loc=spread_esp_nba, scale=11.8))
+    p_sp_nba_l = float(1.0 - norm.cdf(-spread_linea_nba, loc=spread_esp_nba, scale=13.8))
     p_sp_nba_v = 1.0 - p_sp_nba_l
-    p_ov_nba = float(1.0 - norm.cdf(linea_nba, loc=tot_nba, scale=13.5))
+    p_ov_nba = float(1.0 - norm.cdf(linea_nba, loc=tot_nba, scale=15.5))
 
     nk1, nk2, nk3, nk4 = st.columns(4)
     nk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total: {tot_nba:.1f} pts")
@@ -2731,7 +2727,7 @@ elif deporte_activo.startswith("🏀"):
 
 
 # ==============================================================================
-# 5. MÓDULO FÚTBOL AMERICANO (NFL - LOCAL/VISITA + CLIMA + SPREAD + BAJAS)
+# 5. MÓDULO FÚTBOL AMERICANO (NFL - CALIBRACIÓN PUNTOS BAJAS + CLIMA + SPREAD)
 # ==============================================================================
 elif deporte_activo.startswith("🏈"):
     st.sidebar.markdown("### 🏈 1. Equipos NFL")
@@ -2752,14 +2748,14 @@ elif deporte_activo.startswith("🏈"):
         "🌦️ Condición Climática / Estadio:",
         [
             "🏟️ Domo / Clima Normal (0.0 pts)",
-            "💨 Viento Fuerte > 25 km/h o Lluvia (-4.5 pts)",
-            "❄️ Nieve / Frío Extremo (-6.0 pts)"
+            "💨 Viento Fuerte > 25 km/h o Lluvia (-4.0 pts)",
+            "❄️ Nieve / Frío Extremo (-5.5 pts)"
         ]
     )
-    ajuste_clima_nfl = -4.5 if "Viento" in clima_nfl else (-6.0 if "Nieve" in clima_nfl else 0.0)
+    ajuste_clima_nfl = -4.0 if "Viento" in clima_nfl else (-5.5 if "Nieve" in clima_nfl else 0.0)
 
     usar_bayes_nfl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NFL (< 6 PJ)", value=True)
-    mult_bajas_nfl_l, mult_bajas_nfl_v, pct_b_nfl_l, pct_b_nfl_v = renderizar_panel_bajas_y_factor("football", "nfl", nf_l, nf_v, f"nfl_{nf_l}_{nf_v}")
+    _, _, pct_b_nfl_l, pct_b_nfl_v = renderizar_panel_bajas_y_factor("football", "nfl", nf_l, nf_v, f"nfl_{nf_l}_{nf_v}")
 
     df_nfl_l = extraer_ultimos_partidos_reales_espn("football", "nfl", mapa_nfl[nf_l], nf_l, n_partidos=5, condicion_filtro="HOME")
     df_nfl_v = extraer_ultimos_partidos_reales_espn("football", "nfl", mapa_nfl[nf_v], nf_v, n_partidos=5, condicion_filtro="AWAY")
@@ -2782,14 +2778,18 @@ elif deporte_activo.startswith("🏈"):
     else:
         pf_l, pa_l, pf_v, pa_v = pf_l_puro, pa_l_puro, pf_v_puro, pa_v_puro
 
-    pf_l = (pf_l * mult_bajas_nfl_l) + (ajuste_clima_nfl / 2.0)
-    pf_v = (pf_v * mult_bajas_nfl_v) + (ajuste_clima_nfl / 2.0)
+    # Impacto calibrado de bajas en NFL (-0.8 pts reales por cada 5% de bajas)
+    ajuste_nfl_bajas_l = -min((pct_b_nfl_l / 5.0) * 0.8, 4.8)
+    ajuste_nfl_bajas_v = -min((pct_b_nfl_v / 5.0) * 0.8, 4.8)
+
+    pf_l = pf_l + ajuste_nfl_bajas_l + (ajuste_clima_nfl / 2.0)
+    pf_v = pf_v + ajuste_nfl_bajas_v + (ajuste_clima_nfl / 2.0)
 
     proy_l = max((pf_l + pa_v) / 2.0, 6.0)
     proy_v = max((pf_v + pa_l) / 2.0, 6.0)
     tot_nfl = proy_l + proy_v
     spread_esp_nfl = proy_l - proy_v
-    p_ml_l = float(1.0 - norm.cdf(0.0, loc=spread_esp_nfl, scale=13.2))
+    p_ml_l = float(1.0 - norm.cdf(0.0, loc=spread_esp_nfl, scale=13.8))
     p_ml_v = 1.0 - p_ml_l
 
     renderizar_hero_card_deporte(
@@ -2821,9 +2821,9 @@ elif deporte_activo.startswith("🏈"):
     c_ov_nfl = st.sidebar.number_input(f"Cuota Más de {linea_nfl} (Over)", 1.01, 15.0, 1.90, 0.05)
     c_un_nfl = st.sidebar.number_input(f"Cuota Menos de {linea_nfl} (Under)", 1.01, 15.0, 1.90, 0.05)
 
-    p_sp_nfl_l = float(1.0 - norm.cdf(-spread_linea_nfl, loc=spread_esp_nfl, scale=13.2))
+    p_sp_nfl_l = float(1.0 - norm.cdf(-spread_linea_nfl, loc=spread_esp_nfl, scale=13.8))
     p_sp_nfl_v = 1.0 - p_sp_nfl_l
-    p_ov_nfl = float(1.0 - norm.cdf(linea_nfl, loc=tot_nfl, scale=14.2))
+    p_ov_nfl = float(1.0 - norm.cdf(linea_nfl, loc=tot_nfl, scale=14.8))
 
     fk1, fk2, fk3, fk4 = st.columns(4)
     fk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total: {tot_nfl:.1f} pts")
@@ -2849,10 +2849,10 @@ elif deporte_activo.startswith("🏈"):
 
 
 # ==============================================================================
-# 6. MÓDULO BÉISBOL (MLB - ESCUDOS OFICIALES, KELLY Y BAJAS AUTO)
+# 6. MÓDULO BÉISBOL (MLB - CALIBRADO BAYESIANO + BAJAS AMORTIGUADAS)
 # ==============================================================================
 else:
-    sport_p, league_c, nom_dep, sigma_m, cancha_k = "baseball", "mlb", "MLB Béisbol", 3.2, "mlb"
+    sport_p, league_c, nom_dep, sigma_m, cancha_k = "baseball", "mlb", "MLB Béisbol", 3.5, "mlb"
 
     st.sidebar.markdown(f"### 🏆 1. Equipos {nom_dep}")
     mapa_equipos_espn, mapa_logos_usa = obtener_catalogo_equipos_y_logos_espn(sport_p, league_c)
@@ -2867,16 +2867,30 @@ else:
     logo_u_l, fb_u_l = buscar_logo_equipo(u_l, mapa_logos_usa, "#ff6b00")
     logo_u_v, fb_u_v = buscar_logo_equipo(u_v, mapa_logos_usa, "#38bdf8")
 
-    mult_bajas_ul, mult_bajas_uv, pct_b_ul, pct_b_uv = renderizar_panel_bajas_y_factor(sport_p, league_c, u_l, u_v, f"{league_c}_{u_l}_{u_v}")
+    usar_bayes_mlb = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano MLB (< 6 PJ)", value=True)
+    _, _, pct_b_ul, pct_b_uv = renderizar_panel_bajas_y_factor(sport_p, league_c, u_l, u_v, f"{league_c}_{u_l}_{u_v}")
 
     df_real_l = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_l], u_l, n_partidos=8, condicion_filtro="ALL")
     df_real_v = extraer_ultimos_partidos_reales_espn(sport_p, league_c, mapa_equipos_espn[u_v], u_v, n_partidos=8, condicion_filtro="ALL")
 
     def_pts = 4.5
-    pf_l = (float(df_real_l["Puntos/Carreras a Favor"].mean()) if not df_real_l.empty else def_pts) * mult_bajas_ul
-    pa_l = float(df_real_l["Puntos/Carreras en Contra"].mean()) if not df_real_l.empty else def_pts
-    pf_v = (float(df_real_v["Puntos/Carreras a Favor"].mean()) if not df_real_v.empty else def_pts) * mult_bajas_uv
-    pa_v = float(df_real_v["Puntos/Carreras en Contra"].mean()) if not df_real_v.empty else def_pts
+    pf_l_puro = float(df_real_l["Puntos/Carreras a Favor"].mean()) if not df_real_l.empty else def_pts
+    pa_l_puro = float(df_real_l["Puntos/Carreras en Contra"].mean()) if not df_real_l.empty else def_pts
+    pf_v_puro = float(df_real_v["Puntos/Carreras a Favor"].mean()) if not df_real_v.empty else def_pts
+    pa_v_puro = float(df_real_v["Puntos/Carreras en Contra"].mean()) if not df_real_v.empty else def_pts
+
+    if usar_bayes_mlb:
+        w_ml_l = min(len(df_real_l) / 6.0, 1.0)
+        w_ml_v = min(len(df_real_v) / 6.0, 1.0)
+        pf_l = (w_ml_l * pf_l_puro) + ((1.0 - w_ml_l) * def_pts)
+        pa_l = (w_ml_l * pa_l_puro) + ((1.0 - w_ml_l) * def_pts)
+        pf_v = (w_ml_v * pf_v_puro) + ((1.0 - w_ml_v) * def_pts)
+        pa_v = (w_ml_v * pa_v_puro) + ((1.0 - w_ml_v) * def_pts)
+    else:
+        pf_l, pa_l, pf_v, pa_v = pf_l_puro, pa_l_puro, pf_v_puro, pa_v_puro
+
+    pf_l = pf_l * (1.0 - (pct_b_ul / 100.0) * 0.50)
+    pf_v = pf_v * (1.0 - (pct_b_uv / 100.0) * 0.50)
 
     proy_l = (pf_l + pa_v) / 2.0
     proy_v = (pf_v + pa_l) / 2.0
@@ -2909,7 +2923,7 @@ else:
     c_ov_u = st.sidebar.number_input(f"Cuota Over {linea_u}", 1.01, 15.0, 1.90, 0.05)
     c_un_u = st.sidebar.number_input(f"Cuota Under {linea_u}", 1.01, 15.0, 1.90, 0.05)
 
-    p_ov_u = float(1.0 - norm.cdf(linea_u, loc=tot_esp, scale=sigma_m * 1.15))
+    p_ov_u = float(1.0 - norm.cdf(linea_u, loc=tot_esp, scale=sigma_m * 1.18))
 
     uk1, uk2, uk3 = st.columns(3)
     uk1.metric("🎯 Marcador Proyectado", f"{proy_l:.1f} - {proy_v:.1f}", f"Total Esperado: {tot_esp:.1f}")
