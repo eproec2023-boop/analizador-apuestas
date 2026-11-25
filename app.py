@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 18.1 | Market-Anchored Bayesian & Quant Suite",
+    page_title="Pro Bet Analyzer 18.2 | Multi-Channel Roster Injuries & Quant Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -343,8 +343,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 18.1 <span style="color:#ff8c00;">| MARKET-ANCHORED BAYESIAN QUANT</span></h1>
-<p>Anclaje al Mercado Limpio en Muestras Cortas (< 5 PJ) en las 18 Ligas • xG Sintético + Time-Decay • Bitácora Persistente</p>
+<h1>🏆 PRO BET ANALYZER 18.2 <span style="color:#ff8c00;">| MULTI-CHANNEL ROSTER INJURIES & QUANT</span></h1>
+<p>Radar de Bajas en Plantillas Oficiales + Noticias Multi-Liga • Market-Anchored Bayesian xG • De-Vig & Bitácora Persistente</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -360,13 +360,8 @@ def calcular_probabilidades_limpias_devig(cuotas_grupo):
     return probs_limpias, round(vig_pct, 2)
 
 def estimar_xg_implicito_mercado(p1_limpia, p2_limpia, media_tot_liga=2.70):
-    """
-    Despeja los goles esperados implícitos de cada equipo a partir de las probabilidades limpias
-    1X2 del mercado (Market Prior) para evitar sobrevalorar a equipos débiles en muestras < 5 PJ.
-    """
     p1_c = float(np.clip(p1_limpia, 0.02, 0.96))
     p2_c = float(np.clip(p2_limpia, 0.02, 0.96))
-    # Relación logarítmica calibrada entre probabilidad de victoria y expectativa de goles
     diff_fuerza = np.log(p1_c / p2_c) * 0.48
     share_l = 1.0 / (1.0 + np.exp(-diff_fuerza))
     xg_mkt_l = float(np.clip(media_tot_liga * share_l, 0.25, 3.80))
@@ -689,7 +684,9 @@ CLASICOS_MUNDIALES = [
     ("newcastle", "sunderland", "Tyne-Wear Derby (+20% Fricción)"),
     ("aston villa", "wolves", "West Midlands Derby (+16% Fricción)"),
     ("inter", "milan", "Derby della Madonnina (+18% Fricción)"),
+    ("internazionale", "milan", "Derby della Madonnina (+18% Fricción)"),
     ("juventus", "inter", "Derby d'Italia (+18% Fricción)"),
+    ("juventus", "internazionale", "Derby d'Italia (+18% Fricción)"),
     ("juventus", "torino", "Derby della Mole (+18% Fricción)"),
     ("roma", "lazio", "Derby della Capitale (+20% Fricción)"),
     ("napoli", "juventus", "Rivalidad Norte-Sur Italia (+16% Fricción)"),
@@ -937,7 +934,7 @@ def construir_tabla_mercados_kelly(lista_mercados, col_nombre, banca_act, frac_k
     return pd.DataFrame(filas)
 
 # ==============================================================================
-# MOTOR DE INTELIGENCIA AUTOMÁTICA DE BAJAS, ÁRBITROS Y ESCUDOS (ESPN / NHL)
+# MOTOR DE INTELIGENCIA MULTI-CANAL DE BAJAS, PLANTILLAS (ROSTER) Y NOTICIAS
 # ==============================================================================
 ESPN_LEAGUE_MAP = {
     "🏆 UEFA Champions League": ("soccer", "uefa.champions"),
@@ -970,6 +967,40 @@ TRADUCCION_ESTADO_LESION = {
     "Probable": "🟢 Probable"
 }
 
+ALIAS_CLUBES_FUTBOL = {
+    "internazionale": ["inter", "inter milan", "nerazzurri", "internazionale"],
+    "inter": ["inter", "inter milan", "internazionale"],
+    "bayern munich": ["bayern", "bayern munich", "munich", "bavarians"],
+    "paris saint-germain": ["psg", "paris", "paris saint-germain", "paris sg"],
+    "paris sg": ["psg", "paris", "paris saint-germain", "paris sg"],
+    "manchester united": ["man united", "manchester united", "man utd"],
+    "man united": ["man united", "manchester united", "man utd"],
+    "manchester city": ["man city", "manchester city"],
+    "man city": ["man city", "manchester city"],
+    "atletico madrid": ["atletico", "ath madrid", "atletico madrid"],
+    "ath madrid": ["atletico", "ath madrid", "atletico madrid"],
+    "athletic club": ["athletic", "ath bilbao", "bilbao"],
+    "ath bilbao": ["athletic", "ath bilbao", "bilbao"],
+    "borussia dortmund": ["dortmund", "bvb", "borussia dortmund"],
+    "vfb stuttgart": ["stuttgart", "vfb stuttgart"],
+    "bayer leverkusen": ["leverkusen", "bayer leverkusen"],
+    "real madrid": ["real madrid", "madrid"],
+    "barcelona": ["barcelona", "barca"],
+    "sporting cp": ["sporting", "sp lisbon", "sporting cp"],
+    "sp lisbon": ["sporting", "sp lisbon", "sporting cp"],
+    "ac milan": ["milan", "ac milan"],
+    "tottenham hotspur": ["tottenham", "spurs"],
+    "newcastle united": ["newcastle", "newcastle united"],
+    "nottingham forest": ["nottingham", "forest"]
+}
+
+def obtener_claves_busqueda_equipo(nombre_eq):
+    n_low = nombre_eq.lower().strip()
+    if n_low in ALIAS_CLUBES_FUTBOL:
+        return ALIAS_CLUBES_FUTBOL[n_low]
+    palabras = [w for w in re.sub(r'[^a-zA-Z\s]', '', n_low).split() if len(w) > 3 and w not in ["club", "real", "sport", "united", "city", "calcio", "deportivo"]]
+    return palabras if palabras else [n_low]
+
 @st.cache_data(ttl=1800)
 def detectar_arbitro_asignado_espn(sport, league, eq_loc, eq_vis):
     if not sport or not league:
@@ -977,7 +1008,7 @@ def detectar_arbitro_asignado_espn(sport, league, eq_loc, eq_vis):
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard"
         r = requests.get(url, headers=HEADERS_HTTP, timeout=6).json()
-        claves = [w.lower() for w in (eq_loc.split() + eq_vis.split()) if len(w) > 3]
+        claves = obtener_claves_busqueda_equipo(eq_loc) + obtener_claves_busqueda_equipo(eq_vis)
         for ev in r.get("events", []):
             nom_ev = ev.get("name", "").lower()
             if any(k in nom_ev for k in claves):
@@ -1009,6 +1040,7 @@ def obtener_catalogo_equipos_y_logos_espn(sport, league):
                     logo_url = logos[0].get("href", "") if logos else tm.get("logo", "")
                     if nombre and tid:
                         mapa_ids[nombre] = tid
+                        mapa_ids[nombre.lower()] = tid
                     if logo_url:
                         if nombre:
                             mapa_logos[nombre.lower()] = logo_url
@@ -1019,78 +1051,147 @@ def obtener_catalogo_equipos_y_logos_espn(sport, league):
     return mapa_ids, mapa_logos
 
 @st.cache_data(ttl=900)
-def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
-    filas_inj = []
-    if not sport or not league:
-        return pd.DataFrame()
+def extraer_lesiones_desde_roster_espn(sport, league, team_id, etiqueta_equipo):
+    """Inspecciona el roster oficial del club en ESPN para extraer lesiones activas de futbolistas."""
+    filas = []
+    if not sport or not league or not team_id:
+        return filas
     try:
-        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/injuries"
+        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/roster"
         r = requests.get(url, headers=HEADERS_HTTP, timeout=7).json()
-        claves_a = [w.lower() for w in eq_a.split() if len(w) > 3] or [eq_a.lower()]
-        claves_b = [w.lower() for w in eq_b.split() if len(w) > 3] or [eq_b.lower()]
+        athletes = r.get("athletes", [])
+        # En algunos deportes athletes viene agrupado por posición, en fútbol viene como lista directa
+        lista_jug = []
+        for item in athletes:
+            if "items" in item:
+                lista_jug.extend(item.get("items", []))
+            else:
+                lista_jug.append(item)
 
-        for block in r.get("injuries", []):
-            tm_name = block.get("displayName", block.get("team", {}).get("displayName", ""))
-            tm_low = tm_name.lower()
-            pertenece_a = any(k in tm_low for k in claves_a)
-            pertenece_b = any(k in tm_low for k in claves_b)
-            if pertenece_a or pertenece_b:
-                etiqueta_eq = eq_a if pertenece_a else eq_b
-                for item in block.get("injuries", []):
-                    ath = item.get("athlete", {})
-                    jug = ath.get("displayName", "Jugador")
-                    pos = ath.get("position", {}).get("abbreviation", "-")
-                    est_raw = item.get("status", "Questionable")
-                    est_esp = TRADUCCION_ESTADO_LESION.get(est_raw, f"🟡 {est_raw}")
-                    det = item.get("shortComment", item.get("longComment", "Reporte médico activo"))
-
-                    est_low = est_raw.lower()
-                    if any(k in est_low for k in ["out", "injured", "ir", "suspen"]):
-                        base_w = 2.2
-                    elif "doubtful" in est_low:
-                        base_w = 1.5
-                    elif any(k in est_low for k in ["questionable", "day"]):
-                        base_w = 0.75
-                    else:
-                        base_w = 0.0
-
-                    pos_up = str(pos).upper()
-                    if pos_up in ["QB"]:
-                        base_w *= 4.0
-                    elif pos_up in ["FW", "ST", "CF", "LW", "RW", "PG", "SG", "SF", "PF", "C", "P", "SP"]:
-                        base_w *= 1.25
-
-                    filas_inj.append({
-                        "Equipo": etiqueta_eq,
-                        "Jugador": jug,
-                        "Posición": pos,
+        for ath in lista_jug:
+            inj_list = ath.get("injuries", [])
+            if inj_list:
+                jug_nom = ath.get("displayName", "Jugador")
+                pos_ab = ath.get("position", {}).get("abbreviation", "-")
+                for inj in inj_list:
+                    est_raw = inj.get("status", "Out")
+                    est_esp = TRADUCCION_ESTADO_LESION.get(est_raw, f"🔴 {est_raw}")
+                    det = inj.get("shortComment", inj.get("longComment", inj.get("details", {}).get("type", "Baja médica registrada en plantilla")))
+                    est_low = str(est_raw).lower()
+                    base_w = 2.6 if any(k in est_low for k in ["out", "injured", "ir", "suspen"]) else (1.6 if "doubt" in est_low else 0.9)
+                    if str(pos_ab).upper() in ["FW", "ST", "CF", "LW", "RW", "CAM", "CM"]:
+                        base_w *= 1.35
+                    filas.append({
+                        "Equipo": etiqueta_equipo,
+                        "Jugador": jug_nom,
+                        "Posición": pos_ab,
                         "Estado Médico": est_esp,
                         "Detalle / Parte Médico": str(det)[:110],
                         "_peso_auto": base_w
                     })
     except Exception:
         pass
+    return filas
+
+@st.cache_data(ttl=900)
+def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
+    filas_inj = []
+    if not sport or not league:
+        return pd.DataFrame()
+
+    # 1. Para deportes americanos (NBA, NFL, NHL, MLB): endpoint /injuries
+    if sport != "soccer":
+        try:
+            url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/injuries"
+            r = requests.get(url, headers=HEADERS_HTTP, timeout=7).json()
+            claves_a = obtener_claves_busqueda_equipo(eq_a)
+            claves_b = obtener_claves_busqueda_equipo(eq_b)
+
+            for block in r.get("injuries", []):
+                tm_name = block.get("displayName", block.get("team", {}).get("displayName", ""))
+                tm_low = tm_name.lower()
+                pertenece_a = any(k in tm_low for k in claves_a)
+                pertenece_b = any(k in tm_low for k in claves_b)
+                if pertenece_a or pertenece_b:
+                    etiqueta_eq = eq_a if pertenece_a else eq_b
+                    for item in block.get("injuries", []):
+                        ath = item.get("athlete", {})
+                        jug = ath.get("displayName", "Jugador")
+                        pos = ath.get("position", {}).get("abbreviation", "-")
+                        est_raw = item.get("status", "Questionable")
+                        est_esp = TRADUCCION_ESTADO_LESION.get(est_raw, f"🟡 {est_raw}")
+                        det = item.get("shortComment", item.get("longComment", "Reporte médico activo"))
+
+                        est_low = est_raw.lower()
+                        if any(k in est_low for k in ["out", "injured", "ir", "suspen"]):
+                            base_w = 2.2
+                        elif "doubtful" in est_low:
+                            base_w = 1.5
+                        elif any(k in est_low for k in ["questionable", "day"]):
+                            base_w = 0.75
+                        else:
+                            base_w = 0.0
+
+                        pos_up = str(pos).upper()
+                        if pos_up in ["QB"]:
+                            base_w *= 4.0
+                        elif pos_up in ["FW", "ST", "CF", "LW", "RW", "PG", "SG", "SF", "PF", "C", "P", "SP"]:
+                            base_w *= 1.25
+
+                        filas_inj.append({
+                            "Equipo": etiqueta_eq,
+                            "Jugador": jug,
+                            "Posición": pos,
+                            "Estado Médico": est_esp,
+                            "Detalle / Parte Médico": str(det)[:110],
+                            "_peso_auto": base_w
+                        })
+        except Exception:
+            pass
+    else:
+        # 2. Para Fútbol: consultar /roster oficial de ambos equipos en la competición y ligas principales
+        mapa_ids, _ = obtener_catalogo_equipos_y_logos_espn("soccer", league)
+        tid_a = mapa_ids.get(eq_a) or mapa_ids.get(eq_a.lower(), "")
+        tid_b = mapa_ids.get(eq_b) or mapa_ids.get(eq_b.lower(), "")
+        if tid_a:
+            filas_inj.extend(extraer_lesiones_desde_roster_espn("soccer", league, tid_a, eq_a))
+        if tid_b:
+            filas_inj.extend(extraer_lesiones_desde_roster_espn("soccer", league, tid_b, eq_b))
+
     return pd.DataFrame(filas_inj)
 
 @st.cache_data(ttl=900)
 def obtener_noticias_relevantes_espn(sport, league, eq_a, eq_b):
     titulares = []
-    if not sport or not league:
+    vistos = set()
+    if not sport:
         return titulares
-    try:
-        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/news?limit=40"
-        r = requests.get(url, headers=HEADERS_HTTP, timeout=7).json()
-        claves = [w.lower() for w in (eq_a.split() + eq_b.split()) if len(w) > 3]
-        for art in r.get("articles", []):
-            hl = art.get("headline", "")
-            desc = art.get("description", "")
-            texto_busq = f"{hl} {desc}".lower()
-            if any(k in texto_busq for k in claves):
-                fecha_n = art.get("published", "")[:10]
-                titulares.append((fecha_n, hl, desc))
-    except Exception:
-        pass
-    return titulares[:6]
+
+    # En fútbol consultar simultáneamente la competición actual, las 5 grandes ligas y el feed global
+    urls_consulta = [f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/news?limit=40"]
+    if sport == "soccer":
+        for lg_extra in ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1"]:
+            if lg_extra != league:
+                urls_consulta.append(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lg_extra}/news?limit=25")
+        urls_consulta.append("https://site.api.espn.com/apis/site/v2/sports/soccer/news?limit=40")
+
+    claves = obtener_claves_busqueda_equipo(eq_a) + obtener_claves_busqueda_equipo(eq_b)
+    for url in urls_consulta:
+        try:
+            r = requests.get(url, headers=HEADERS_HTTP, timeout=6).json()
+            for art in r.get("articles", []):
+                hl = art.get("headline", "")
+                if not hl or hl in vistos:
+                    continue
+                desc = art.get("description", "")
+                texto_busq = f"{hl} {desc}".lower()
+                if any(k in texto_busq for k in claves):
+                    vistos.add(hl)
+                    fecha_n = art.get("published", "")[:10]
+                    titulares.append((fecha_n, hl, desc))
+        except Exception:
+            pass
+    return titulares[:8]
 
 def calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis):
     raw_l, raw_v = 0.0, 0.0
@@ -1098,16 +1199,22 @@ def calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis):
         raw_l += float(df_inj[df_inj["Equipo"] == eq_loc]["_peso_auto"].sum())
         raw_v += float(df_inj[df_inj["Equipo"] == eq_vis]["_peso_auto"].sum())
 
-    palabras_alerta = ["injury", "injured", "out for", "ruled out", "sidelined", "lesion", "baja", "suspend", "miss"]
-    claves_l = [w.lower() for w in eq_loc.split() if len(w) > 3]
-    claves_v = [w.lower() for w in eq_vis.split() if len(w) > 3]
+    palabras_alerta = [
+        "injury", "injured", "out for", "ruled out", "sidelined", "lesion", "baja",
+        "suspend", "miss", "hamstring", "ankle", "knee", "ligament", "tear", "muscle",
+        "absence", "absences", "doubt", "blow", "surgery"
+    ]
+    claves_l = obtener_claves_busqueda_equipo(eq_loc)
+    claves_v = obtener_claves_busqueda_equipo(eq_vis)
     for _, hl, desc in noticias:
         txt = f"{hl} {desc}".lower()
         if any(pa in txt for pa in palabras_alerta):
+            # Peso extra si menciona una estrella o múltiples bajas
+            peso_not = 3.2 if any(k in txt for k in ["kane", "mbappe", "haaland", "salah", "yamal", "lautaro", "vinicius", "bellingham", "saka", "rodri", "de bruyne", "absences", "ruled out"]) else 2.0
             if any(kl in txt for kl in claves_l):
-                raw_l += 1.5
+                raw_l += peso_not
             if any(kv in txt for kv in claves_v):
-                raw_v += 1.5
+                raw_v += peso_not
 
     pen_l = int(min(max(round(raw_l / 5.0) * 5, 0), 25))
     pen_v = int(min(max(round(raw_v / 5.0) * 5, 0), 25))
@@ -1118,18 +1225,18 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
     noticias = obtener_noticias_relevantes_espn(sport, league, eq_loc, eq_vis)
     auto_pen_l, auto_pen_v = calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis)
 
-    with st.expander(f"🏥 INTELIGENCIA AUTOMÁTICA DE BAJAS, LESIONES Y NOTICIAS ({eq_loc} vs. {eq_vis})", expanded=(not df_inj.empty or auto_pen_l > 0 or auto_pen_v > 0)):
+    with st.expander(f"🏥 INTELIGENCIA MULTI-CANAL DE BAJAS, PLANTILLAS Y NOTICIAS ({eq_loc} vs. {eq_vis})", expanded=(not df_inj.empty or auto_pen_l > 0 or auto_pen_v > 0)):
         if not df_inj.empty:
-            st.warning(f"⚠️ Reporte Médico Oficial Detectado ({len(df_inj)} bajas/dudas en API ESPN) — Índice Bajas Auto: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)")
+            st.warning(f"⚠️ Bajas Detectadas en Plantilla Oficial ({len(df_inj)} reportes activos) — Índice Bajas Auto: {eq_loc} (-{auto_pen_l}%) | {eq_vis} (-{auto_pen_v}%)")
             cols_visibles = [c for c in df_inj.columns if not c.startswith("_")]
             st.dataframe(df_inj[cols_visibles].style.apply(resaltar_valor, axis=1), use_container_width=True, hide_index=True)
         else:
-            st.info(f"ℹ️ Sin reporte médico activo en el feed público de ESPN para {eq_loc} vs. {eq_vis} (Índice Bajas: -{auto_pen_l}% / -{auto_pen_v}%).")
+            st.info(f"ℹ️ Sin bajas estructuradas en plantilla pública para {eq_loc} vs. {eq_vis} (Índice Bajas por Noticias: -{auto_pen_l}% / -{auto_pen_v}%).")
 
         if noticias:
-            st.markdown("**🗞️ Últimas Noticias Relevantes Analizadas:**")
+            st.markdown("**🗞️ Últimas Noticias Analizadas (Multi-Liga + Global):**")
             for f_n, hl, desc in noticias:
-                st.markdown(f"📰 **[{f_n}] {hl}** — _{desc[:140]}_")
+                st.markdown(f"📰 **[{f_n}] {hl}** — _{desc[:150]}_")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🏥 Factor de Incidencia (Calibrado)")
@@ -1588,7 +1695,7 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (18 Torneos: Market-Anchored xG + Time-Decay)",
+    "⚽ Fútbol (18 Torneos: Market-Anchored xG + Roster Injuries)",
     "🎾 Tenis (ATP / WTA Superficie 2x, Aces + De-Vig)",
     "🏒 Hockey sobre Hielo (NHL - SOG Over, Penalizaciones 2' + De-Vig)",
     "🏀 Basketball (NBA - Local/Visita, B2B + Spread + De-Vig)",
@@ -1857,7 +1964,7 @@ with st.expander(f"📒 BITÁCORA PERSISTENTE DE APUESTAS ({st.session_state.get
         st.download_button("📥 Descargar Respaldo Bitácora en CSV / Excel", data=csv_export, file_name="bitacora_pro_bet_analyzer.csv", mime="text/csv")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (MARKET-ANCHORED BAYESIAN PRIOR EN LAS 18 LIGAS + xG + DE-VIG)
+# 1. MÓDULO FÚTBOL (MARKET-ANCHORED BAYESIAN + MULTI-CHANNEL ROSTER INJURIES)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -2009,7 +2116,6 @@ if deporte_activo.startswith("⚽"):
 
     mult_bajas_l, mult_bajas_v, pct_baja_l, pct_baja_v = renderizar_panel_bajas_y_factor(espn_sp, espn_lg, eq_l, eq_v, f"fut_{eq_l}_{eq_v}")
 
-    # 1. Leer primero las cuotas de Betano en la barra lateral para alimentar el Market Prior en muestras cortas
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🟠 2. Cuotas en Betano (Goles & 1X2)")
     cb1, cb2, cb3 = st.sidebar.columns(3)
@@ -2072,7 +2178,6 @@ if deporte_activo.startswith("⚽"):
     media_gc_liga_away = media_gf_liga_home
     media_liga = max((media_gf_liga_home + media_gc_liga_home) / 2.0, 1.25)
 
-    # Prior de Mercado Limpio para muestras < 5 PJ en TODAS las ligas
     xg_mkt_l, xg_mkt_v = estimar_xg_implicito_mercado(p_limp_1x2[0], p_limp_1x2[2], media_tot_liga=media_gf_liga_home + media_gc_liga_home)
 
     if usar_sos and not p_l.empty and not p_v.empty:
@@ -2113,7 +2218,6 @@ if deporte_activo.startswith("⚽"):
     peso_l = min(pj_l / 5.0, 1.0) if usar_amortiguador else 1.0
     peso_v = min(pj_v / 5.0, 1.0) if usar_amortiguador else 1.0
 
-    # Combinar historial real con el Prior de Mercado Limpio cuando pj < 5 en cualquier liga
     gf_l = (peso_l * gf_l_puro) + ((1.0 - peso_l) * xg_mkt_l)
     gc_l = (peso_l * gc_l_puro) + ((1.0 - peso_l) * xg_mkt_v)
     gf_v = (peso_v * gf_v_puro) + ((1.0 - peso_v) * xg_mkt_v)
@@ -2134,7 +2238,6 @@ if deporte_activo.startswith("⚽"):
     lam_loc_stats = max(((gf_l * gc_v) / media_liga) * np.sqrt(ratio_jerarquia), 0.15)
     lam_vis_stats = max(((gf_v * gc_l) / media_liga) / np.sqrt(ratio_jerarquia), 0.12)
 
-    # Anclaje final suave al Market Prior si alguno de los dos equipos tiene < 4 PJ en el torneo
     peso_m_comb = min((pj_l + pj_v) / 8.0, 1.0) if usar_amortiguador else 1.0
     lam_loc = (peso_m_comb * lam_loc_stats) + ((1.0 - peso_m_comb) * xg_mkt_l)
     lam_vis = (peso_m_comb * lam_vis_stats) + ((1.0 - peso_m_comb) * xg_mkt_v)
@@ -2159,7 +2262,6 @@ if deporte_activo.startswith("⚽"):
     media_hc_liga = float(df_csv['HC'].dropna().mean()) if ('HC' in df_csv.columns and not df_csv['HC'].dropna().empty) else 5.2
     media_ac_liga = float(df_csv['AC'].dropna().mean()) if ('AC' in df_csv.columns and not df_csv['AC'].dropna().empty) else 4.4
 
-    # Prior de tiros y córners ajustado por el ratio ofensivo implícito del mercado en muestras < 5 PJ
     ratio_mkt_l = float(np.clip(xg_mkt_l / max(media_gf_liga_home, 0.5), 0.55, 1.45))
     ratio_mkt_v = float(np.clip(xg_mkt_v / max(media_gf_liga_away, 0.5), 0.55, 1.45))
 
@@ -2808,7 +2910,7 @@ elif deporte_activo.startswith("🏀"):
         st.error("No se pudo conectar con la API Oficial de ESPN para NBA.")
         st.stop()
 
-    lista_nba = sorted(list(mapa_nba.keys()))
+    lista_nba = sorted([k for k in mapa_nba.keys() if not k.islower()])
     c_nb1, c_nb2 = st.sidebar.columns(2)
     nb_l = c_nb1.selectbox("🏠 Local (Home)", lista_nba, index=0)
     nb_v = c_nb2.selectbox("✈️ Visita (Road)", lista_nba, index=1 if len(lista_nba) > 1 else 0)
@@ -2932,7 +3034,7 @@ elif deporte_activo.startswith("🏈"):
         st.error("No se pudo conectar con la API Oficial de ESPN para NFL.")
         st.stop()
 
-    lista_nfl = sorted(list(mapa_nfl.keys()))
+    lista_nfl = sorted([k for k in mapa_nfl.keys() if not k.islower()])
     c_nf1, c_nf2 = st.sidebar.columns(2)
     nf_l = c_nf1.selectbox("🏠 Local (Home)", lista_nfl, index=0)
     nf_v = c_nf2.selectbox("✈️ Visita (Road)", lista_nfl, index=1 if len(lista_nfl) > 1 else 0)
@@ -3059,7 +3161,7 @@ else:
         st.error(f"No se pudo conectar con el servidor en vivo de ESPN para {nom_dep}.")
         st.stop()
 
-    lista_eq = sorted(list(mapa_equipos_espn.keys()))
+    lista_eq = sorted([k for k in mapa_equipos_espn.keys() if not k.islower()])
     u_l = st.sidebar.selectbox("🏠 Local (Home)", lista_eq, index=0)
     u_v = st.sidebar.selectbox("✈️ Visita (Road)", lista_eq, index=1 if len(lista_eq) > 1 else 0)
 
