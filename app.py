@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 17.3 | NHL Boxscore PIM Fix & Quant Suite",
+    page_title="Pro Bet Analyzer 17.4 | NHL 2-Min Minor Penalties & Quant Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -287,8 +287,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 17.3 <span style="color:#ff8c00;">| NHL BOXSCORE PIM & QUANT SUITE</span></h1>
-<p>Calibración Bayesiana Universal (18 Ligas/UEFA) • NHL PIM Real por Jugador, SOG (Over) y Puck Line Abierto • Bitácora & Kelly</p>
+<h1>🏆 PRO BET ANALYZER 17.4 <span style="color:#ff8c00;">| NHL 2-MIN MINOR PENALTIES & QUANT</span></h1>
+<p>Penalizaciones Exactas de 2 Minutos NHL (Partido, Local y Visita) • Calibración Bayesiana Fútbol/UEFA • Bitácora & Kelly</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -331,8 +331,9 @@ MERCADOS_SISTEMA = {
         "Total Goles NHL (Under 5.5 / 6.0 / 6.5)",
         "Shots on Goal (SOG) Totales (Over)",
         "Shots on Goal (SOG) Equipo Local (Over)",
-        "Minutos de Penalización (PIM) Totales (Over)",
-        "Minutos de Penalización (PIM) Totales (Under)"
+        "Total Penalizaciones de 2 Minutos Partido (7+ / 8+ / 9+)",
+        "Penalizaciones de 2 Minutos Equipo Local (3+ / 4+ / 5+)",
+        "Penalizaciones de 2 Minutos Equipo Visita (3+ / 4+ / 5+)"
     ],
     "🏀 Basketball (NBA)": [
         "Moneyline NBA",
@@ -1012,7 +1013,7 @@ def renderizar_panel_bajas_y_factor(sport, league, eq_loc, eq_vis, key_prefix):
     return 1.0 - (imp_loc / 100.0), 1.0 - (imp_vis / 100.0), imp_loc, imp_vis
 
 # ==============================================================================
-# FUNCIONES GLOBALES DE DATOS DEPORTIVOS (NATIONS LEAGUE, ESPN, NHL + PIM)
+# FUNCIONES GLOBALES DE DATOS DEPORTIVOS (NATIONS LEAGUE, ESPN, NHL 2-MIN PENALTIES)
 # ==============================================================================
 SELECCIONES_UEFA = [
     "Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium",
@@ -1123,37 +1124,48 @@ def obtener_catalogo_equipos_nhl():
     return mapa, mapa_logos
 
 @st.cache_data(ttl=1200)
-def obtener_boxscore_detallado_nhl(game_id):
+def obtener_boxscore_y_penalizaciones_2min_nhl(game_id):
     """
-    Extrae SOG y PIM reales desde api-web.nhle.com/v1/gamecenter/{game_id}/boxscore.
-    Suma los minutos de penalización (pim) reales de forwards y defense en playerByGameStats.
+    Extrae desde api-web.nhle.com:
+    - Shots on Goal (SOG) Local y Visita
+    - Conteo EXACTO de Penalizaciones Menores de 2 Minutos (duration == 2) para Local y Visita
+      desde el endpoint oficial /landing (excluyendo mayores de 5 min y malas conductas de 10 min).
     """
+    h_sog, a_sog, h_pen2, a_pen2 = 0, 0, 0, 0
     try:
-        r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=6).json()
-        h_tm = r.get("homeTeam", {})
-        a_tm = r.get("awayTeam", {})
+        r_land = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/landing", headers=HEADERS_HTTP, timeout=6).json()
+        h_tm = r_land.get("homeTeam", {})
+        a_tm = r_land.get("awayTeam", {})
+        h_ab = h_tm.get("abbrev", "")
+        a_ab = a_tm.get("abbrev", "")
         h_sog = int(h_tm.get("sog", 0))
         a_sog = int(a_tm.get("sog", 0))
 
-        # Calcular PIM real sumando patinadores en playerByGameStats
-        p_stats = r.get("playerByGameStats", {})
-        h_pim = 0
-        a_pim = 0
-        for grupo in ["forwards", "defense"]:
-            for jug in p_stats.get("homeTeam", {}).get(grupo, []):
-                h_pim += int(jug.get("pim", 0))
-            for jug in p_stats.get("awayTeam", {}).get(grupo, []):
-                a_pim += int(jug.get("pim", 0))
-
-        # Respaldo si viniera en la raíz del equipo
-        if h_pim == 0 and "pim" in h_tm:
-            h_pim = int(h_tm.get("pim", 0))
-        if a_pim == 0 and "pim" in a_tm:
-            a_pim = int(a_tm.get("pim", 0))
-
-        return h_sog, a_sog, h_pim, a_pim
+        # Recorrer todas las penalizaciones del resumen oficial y contar ÚNICAMENTE las de 2 minutos
+        pen_periods = r_land.get("summary", {}).get("penalties", [])
+        for per in pen_periods:
+            for p_item in per.get("penalties", []):
+                dur = int(p_item.get("duration", 0))
+                if dur == 2:
+                    t_ab = p_item.get("teamAbbrev", {})
+                    ab_str = t_ab.get("default", "") if isinstance(t_ab, dict) else str(t_ab)
+                    if ab_str == h_ab:
+                        h_pen2 += 1
+                    elif ab_str == a_ab:
+                        a_pen2 += 1
     except Exception:
-        return 0, 0, 0, 0
+        pass
+
+    # Respaldo de SOG si faltara en landing
+    if h_sog == 0 and a_sog == 0:
+        try:
+            r_box = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore", headers=HEADERS_HTTP, timeout=5).json()
+            h_sog = int(r_box.get("homeTeam", {}).get("sog", 0))
+            a_sog = int(r_box.get("awayTeam", {}).get("sog", 0))
+        except Exception:
+            pass
+
+    return h_sog, a_sog, h_pen2, a_pen2
 
 @st.cache_data(ttl=900)
 def extraer_ultimos_partidos_nhl_completo(abbrev, condicion="HOME", n_partidos=5):
@@ -1184,11 +1196,11 @@ def extraer_ultimos_partidos_nhl_completo(abbrev, condicion="HOME", n_partidos=5
             a_sc = int(a_tm.get("score", 0))
             es_local = (h_ab == abbrev)
 
-            h_sog, a_sog, h_pim, a_pim = obtener_boxscore_detallado_nhl(gid) if gid else (0, 0, 0, 0)
+            h_sog, a_sog, h_pen2, a_pen2 = obtener_boxscore_y_penalizaciones_2min_nhl(gid) if gid else (0, 0, 0, 0)
             sog_favor = h_sog if es_local else a_sog
             sog_contra = a_sog if es_local else h_sog
-            pim_propio = h_pim if es_local else a_pim
-            pim_rival = a_pim if es_local else h_pim
+            pen2_propio = h_pen2 if es_local else a_pen2
+            pen2_rival = a_pen2 if es_local else h_pen2
 
             gf = h_sc if es_local else a_sc
             gc = a_sc if es_local else h_sc
@@ -1206,9 +1218,9 @@ def extraer_ultimos_partidos_nhl_completo(abbrev, condicion="HOME", n_partidos=5
                 "Tiros al Arco (SOG) Favor": sog_favor if sog_favor > 0 else np.nan,
                 "Tiros al Arco (SOG) Contra": sog_contra if sog_contra > 0 else np.nan,
                 "Total Tiros (SOG)": (sog_favor + sog_contra) if (sog_favor > 0 and sog_contra > 0) else np.nan,
-                "Min. Penalización (PIM) Propios": pim_propio,
-                "Min. Penalización (PIM) Rival": pim_rival,
-                "Total Min. Penalización (PIM)": pim_propio + pim_rival,
+                "Penalizaciones 2' Propias": pen2_propio,
+                "Penalizaciones 2' Rival": pen2_rival,
+                "Total Penalizaciones 2'": pen2_propio + pen2_rival,
                 "Definición": cierre_lbl,
                 "Resultado": "✅ Victoria" if gf > gc else "❌ Derrota"
             })
@@ -1460,7 +1472,7 @@ st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
     "⚽ Fútbol (18 Torneos: UEFA Champions/Europa/Conf + Ligas)",
     "🎾 Tenis (ATP / WTA Superficie 2x, Aces + Indoor/Altura)",
-    "🏒 Hockey sobre Hielo (NHL - SOG Over, PIM + Hándicap Abierto)",
+    "🏒 Hockey sobre Hielo (NHL - SOG Over, Penalizaciones 2' + Hándicap)",
     "🏀 Basketball (NBA - Local/Visita, B2B + Spread)",
     "🏈 Fútbol Americano (NFL - Local/Visita, Clima + Spread)",
     "⚾ Béisbol (MLB - API ESPN + Escudos)"
@@ -2379,7 +2391,7 @@ elif deporte_activo.startswith("🎾"):
 
 
 # ==============================================================================
-# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - SOLO OVER SOG + PIM + HÁNDICAP ABIERTO)
+# 3. MÓDULO HOCKEY SOBRE HIELO (NHL - SOLO OVER SOG + PENALIZACIONES 2 MINUTOS)
 # ==============================================================================
 elif deporte_activo.startswith("🏒"):
     st.sidebar.markdown("### 🏒 1. Equipos NHL")
@@ -2406,7 +2418,7 @@ elif deporte_activo.startswith("🏒"):
     usar_bayes_nhl = st.sidebar.checkbox("🛡️ Amortiguador Bayesiano NHL (< 6 PJ)", value=False)
     mult_bajas_nl, mult_bajas_nv, pct_baja_nl, pct_baja_nv = renderizar_panel_bajas_y_factor("hockey", "nhl", nh_l, nh_v, f"nhl_{nh_l}_{nh_v}")
 
-    with st.spinner(f"Extrayendo boxscores reales de goles, Tiros (SOG) y Penalizaciones (PIM) de {nh_l} y {nh_v}..."):
+    with st.spinner(f"Extrayendo goles, Tiros (SOG) y Penalizaciones de 2 Minutos de {nh_l} y {nh_v}..."):
         df_nhl_l = extraer_ultimos_partidos_nhl_completo(mapa_nhl[nh_l], condicion="HOME", n_partidos=5)
         df_nhl_v = extraer_ultimos_partidos_nhl_completo(mapa_nhl[nh_v], condicion="AWAY", n_partidos=5)
 
@@ -2447,20 +2459,21 @@ elif deporte_activo.startswith("🏒"):
     sog_esp_vis = round(((sog_f_v + sog_c_l) / 2.0) * (0.6 + 0.4 * mult_bajas_nv) * (1.06 if b2b_nl else 1.0), 1)
     sog_totales_esp = round(sog_esp_loc + sog_esp_vis, 1)
 
-    # Cálculo real de Minutos de Penalización (PIM) desde boxscores de jugadores NHL
-    pim_l_serie = df_nhl_l["Min. Penalización (PIM) Propios"].dropna() if "Min. Penalización (PIM) Propios" in df_nhl_l else pd.Series(dtype=float)
-    pim_rl_serie = df_nhl_l["Min. Penalización (PIM) Rival"].dropna() if "Min. Penalización (PIM) Rival" in df_nhl_l else pd.Series(dtype=float)
-    pim_v_serie = df_nhl_v["Min. Penalización (PIM) Propios"].dropna() if "Min. Penalización (PIM) Propios" in df_nhl_v else pd.Series(dtype=float)
-    pim_rv_serie = df_nhl_v["Min. Penalización (PIM) Rival"].dropna() if "Min. Penalización (PIM) Rival" in df_nhl_v else pd.Series(dtype=float)
+    # Conteo real de Penalizaciones Menores de 2 Minutos (cometidas y provocadas)
+    p2_prop_l_s = df_nhl_l["Penalizaciones 2' Propias"].dropna() if "Penalizaciones 2' Propias" in df_nhl_l else pd.Series(dtype=float)
+    p2_riv_l_s = df_nhl_l["Penalizaciones 2' Rival"].dropna() if "Penalizaciones 2' Rival" in df_nhl_l else pd.Series(dtype=float)
+    p2_prop_v_s = df_nhl_v["Penalizaciones 2' Propias"].dropna() if "Penalizaciones 2' Propias" in df_nhl_v else pd.Series(dtype=float)
+    p2_riv_v_s = df_nhl_v["Penalizaciones 2' Rival"].dropna() if "Penalizaciones 2' Rival" in df_nhl_v else pd.Series(dtype=float)
 
-    pim_prop_l = float(pim_l_serie.mean()) if (not pim_l_serie.empty and pim_l_serie.sum() > 0) else 8.0
-    pim_riv_l = float(pim_rl_serie.mean()) if (not pim_rl_serie.empty and pim_rl_serie.sum() > 0) else 8.0
-    pim_prop_v = float(pim_v_serie.mean()) if (not pim_v_serie.empty and pim_v_serie.sum() > 0) else 8.5
-    pim_riv_v = float(pim_rv_serie.mean()) if (not pim_rv_serie.empty and pim_rv_serie.sum() > 0) else 8.0
+    pen2_prop_l = float(p2_prop_l_s.mean()) if not p2_prop_l_s.empty else 3.5
+    pen2_riv_l = float(p2_riv_l_s.mean()) if not p2_riv_l_s.empty else 3.5
+    pen2_prop_v = float(p2_prop_v_s.mean()) if not p2_prop_v_s.empty else 3.8
+    pen2_riv_v = float(p2_riv_v_s.mean()) if not p2_riv_v_s.empty else 3.5
 
-    pim_esp_loc = round((pim_prop_l + pim_riv_v) / 2.0, 1)
-    pim_esp_vis = round((pim_prop_v + pim_riv_l) / 2.0, 1)
-    pim_totales_esp = round(max(pim_esp_loc + pim_esp_vis, 6.0), 1)
+    # Penalizaciones de 2 minutos esperadas (cruce entre indisciplina propia y capacidad de provocar del rival)
+    lam_pen2_loc = round(max((pen2_prop_l + pen2_riv_v) / 2.0, 1.2), 2)
+    lam_pen2_vis = round(max((pen2_prop_v + pen2_riv_l) / 2.0, 1.2), 2)
+    lam_pen2_tot = round(lam_pen2_loc + lam_pen2_vis, 2)
 
     lam_nhl_l = max((gf_nhl_l * gc_nhl_v) / media_nhl_global, 0.50)
     lam_nhl_v = max((gf_nhl_v * gc_nhl_l) / media_nhl_global, 0.50)
@@ -2490,18 +2503,18 @@ elif deporte_activo.startswith("🏒"):
         nh_l, nh_v, logo_nh_l, fb_nh_l, logo_nh_v, fb_nh_v,
         "🏒 NHL HOCKEY • LOCAL VS. VISITA",
         f"{lam_nhl_l:.2f}  —  {lam_nhl_v:.2f}",
-        f"Goles Esp.: {tot_nhl:.2f} • SOG Esp.: {sog_totales_esp} • Min. Penalización (PIM) Esp.: {pim_totales_esp} min",
+        f"Goles Esp.: {tot_nhl:.2f} • SOG Esp.: {sog_totales_esp} • Penalizaciones 2' Esp.: {lam_pen2_tot:.1f} ({lam_pen2_loc:.1f} L + {lam_pen2_vis:.1f} V)",
         p_ml_l, None, p_ml_v, pct_baja_nl, pct_baja_nv,
         badge_extra=" | ".join(alertas_nhl)
     )
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles, Tiros (SOG) y Minutos Penalización (PIM) Reales ({nh_l} vs {nh_v})", expanded=False):
-        st.success("✅ Datos extraídos en vivo desde los Boxscores Oficiales de la NHL (`api-web.nhle.com`).")
-        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. SOG: {sog_f_l:.1f} | Prom. PIM propios: {pim_prop_l:.1f} min):**")
+    with st.expander(f"📋 TABLA DE AUDITORÍA NHL: Goles, Tiros (SOG) y Penalizaciones de 2 Minutos Reales ({nh_l} vs {nh_v})", expanded=False):
+        st.success("✅ Penalizaciones filtradas estrictamente a infracciones menores de **2 minutos (`duration == 2`)** desde el reporte oficial de la NHL.")
+        st.markdown(f"**🏠 Últimos {len(df_nhl_l)} partidos de {nh_l} en CASA (Prom. SOG: {sog_f_l:.1f} | Prom. Penalizaciones 2': {pen2_prop_l:.1f} propias / {pen2_riv_l:.1f} rival):**")
         if not df_nhl_l.empty:
             st.dataframe(df_nhl_l, use_container_width=True, hide_index=True)
 
-        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. SOG: {sog_f_v:.1f} | Prom. PIM propios: {pim_prop_v:.1f} min):**")
+        st.markdown(f"**✈️ Últimos {len(df_nhl_v)} partidos de {nh_v} de VISITA (Prom. SOG: {sog_f_v:.1f} | Prom. Penalizaciones 2': {pen2_prop_v:.1f} propias / {pen2_riv_v:.1f} rival):**")
         if not df_nhl_v.empty:
             st.dataframe(df_nhl_v, use_container_width=True, hide_index=True)
 
@@ -2518,7 +2531,7 @@ elif deporte_activo.startswith("🏒"):
     c_ov_nhl = st.sidebar.number_input(f"Cuota Over {linea_nhl} Goles", 1.01, 15.0, 1.88, 0.05)
     c_un_nhl = st.sidebar.number_input(f"Cuota Under {linea_nhl} Goles", 1.01, 15.0, 1.92, 0.05)
 
-    with st.sidebar.expander("🎯 Líneas Tiros (Solo Over) y Penalizaciones (PIM)", expanded=True):
+    with st.sidebar.expander("🎯 Tiros (Solo Over) y Penalizaciones de 2 Minutos", expanded=True):
         def_sog_tot = float(np.clip(int(sog_totales_esp) + 0.5, 35.5, 85.5))
         linea_sog_tot = st.number_input("Línea Tiros al Arco Totales (Over)", 35.5, 85.5, def_sog_tot, 1.0)
         c_ov_sog = st.number_input(f"Cuota Over {linea_sog_tot} Tiros", 1.01, 15.0, 1.87, 0.05)
@@ -2528,10 +2541,18 @@ elif deporte_activo.startswith("🏒"):
         c_ov_sog_l = st.number_input(f"Cuota Over {linea_sog_loc} Tiros {nh_l}", 1.01, 15.0, 1.85, 0.05)
 
         st.markdown("---")
-        def_pim_tot = float(np.clip(int(pim_totales_esp) + 0.5, 4.5, 45.5))
-        linea_pim_tot = st.number_input("⏱️ Línea Minutos Penalización (PIM)", 4.5, 45.5, def_pim_tot, 1.0)
-        c_ov_pim = st.number_input(f"Cuota Over {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
-        c_un_pim = st.number_input(f"Cuota Under {linea_pim_tot} Min. PIM", 1.01, 15.0, 1.85, 0.05)
+        st.markdown("**⏱️ Penalizaciones de 2 Minutos (Formato Betano 7+, 3+):**")
+        def_pen2_tot = int(np.clip(round(lam_pen2_tot), 3, 15))
+        linea_pen2_tot = st.number_input("Total Partido (ej. 7 para '7+', 8 para '8+')", 3, 15, def_pen2_tot, 1)
+        c_ov_pen2_tot = st.number_input(f"Cuota Partido {linea_pen2_tot}+ Penalizaciones 2'", 1.01, 15.0, 1.65, 0.05)
+
+        def_pen2_loc = int(np.clip(round(lam_pen2_loc), 1, 10))
+        linea_pen2_loc = st.number_input(f"{nh_l} (ej. 3 para '3+', 4 para '4+')", 1, 10, def_pen2_loc, 1)
+        c_ov_pen2_loc = st.number_input(f"Cuota {nh_l} {linea_pen2_loc}+ Penalizaciones 2'", 1.01, 15.0, 1.40, 0.05)
+
+        def_pen2_vis = int(np.clip(round(lam_pen2_vis), 1, 10))
+        linea_pen2_vis = st.number_input(f"{nh_v} (ej. 3 para '3+', 4 para '4+')", 1, 10, def_pen2_vis, 1)
+        c_ov_pen2_vis = st.number_input(f"Cuota {nh_v} {linea_pen2_vis}+ Penalizaciones 2'", 1.01, 15.0, 1.35, 0.05)
 
     p_hc_nhl_l = 0.0
     for i in range(13):
@@ -2551,17 +2572,20 @@ elif deporte_activo.startswith("🏒"):
     p_ov_nhl = 1.0 - sum(poisson.pmf(k, tot_nhl) for k in range(int(linea_nhl) + 1))
     p_ov_sog_tot = float(1.0 - norm.cdf(linea_sog_tot, loc=sog_totales_esp, scale=6.8))
     p_ov_sog_l = float(1.0 - norm.cdf(linea_sog_loc, loc=sog_esp_loc, scale=4.8))
-    p_ov_pim = float(1.0 - norm.cdf(linea_pim_tot, loc=pim_totales_esp, scale=4.6))
-    p_un_pim = 1.0 - p_ov_pim
+
+    # Probabilidad exacta de Poisson para "N+" (es decir, >= N penalizaciones de 2 minutos)
+    p_pen2_tot_mas = float(1.0 - sum(poisson.pmf(k, lam_pen2_tot) for k in range(int(linea_pen2_tot))))
+    p_pen2_loc_mas = float(1.0 - sum(poisson.pmf(k, lam_pen2_loc) for k in range(int(linea_pen2_loc))))
+    p_pen2_vis_mas = float(1.0 - sum(poisson.pmf(k, lam_pen2_vis) for k in range(int(linea_pen2_vis))))
 
     nk1, nk2, nk3, nk4 = st.columns(4)
     nk1.metric("🏒 Goles Esp. (60m)", f"{lam_nhl_l:.2f} - {lam_nhl_v:.2f}", f"Total: {tot_nhl:.2f} goles")
     nk2.metric("⚖️ Hándicap NHL", f"{nh_l} {handicap_nhl_loc:+.1f}: {p_hc_nhl_l*100:.1f}%", f"ML: {p_ml_l*100:.1f}% vs {p_ml_v*100:.1f}%")
     nk3.metric("🎯 Tiros al Arco Esp.", f"{sog_totales_esp} tiros", f"{sog_esp_loc} L + {sog_esp_vis} V")
-    nk4.metric("⏱️ Min. Penalización (PIM)", f"{pim_totales_esp} min", f"{pim_esp_loc} L + {pim_esp_vis} V")
+    nk4.metric("⏱️ Penalizaciones 2' Esp.", f"{lam_pen2_tot:.1f} pen. 2'", f"{lam_pen2_loc:.1f} L + {lam_pen2_vis:.1f} V")
 
     CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
-    ntab1, ntab2, ntab3 = st.tabs(["🏆 1. Goles, ML y Hándicap", "🎯 2. Tiros (Over) & Penalizaciones (PIM)", "🔴 3. Radar En Vivo"])
+    ntab1, ntab2, ntab3 = st.tabs(["🏆 1. Goles, ML y Hándicap", "🎯 2. Tiros (Over) & Penalizaciones 2'", "🔴 3. Radar En Vivo"])
     with ntab1:
         m_nhl = [
             (f"Moneyline: Gana {nh_l} (Inc. Prórroga)", p_ml_l, c_nh_l),
@@ -2575,13 +2599,14 @@ elif deporte_activo.startswith("🏒"):
         st.dataframe(df_nh1.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with ntab2:
-        m_sog_pim = [
+        m_sog_pen2 = [
             (f"🎯 Más de {linea_sog_tot} Shots on Goal Totales (Over)", p_ov_sog_tot, c_ov_sog),
             (f"🎯 {nh_l}: Más de {linea_sog_loc} Shots on Goal (Over)", p_ov_sog_l, c_ov_sog_l),
-            (f"⏱️ Más de {linea_pim_tot} Minutos de Penalización Totales (Over PIM)", p_ov_pim, c_ov_pim),
-            (f"⏱️ Menos de {linea_pim_tot} Minutos de Penalización Totales (Under PIM)", p_un_pim, c_un_pim)
+            (f"⏱️ Total Partido: {linea_pen2_tot}+ Penalizaciones de 2 Minutos", p_pen2_tot_mas, c_ov_pen2_tot),
+            (f"⏱️ {nh_l}: {linea_pen2_loc}+ Penalizaciones de 2 Minutos", p_pen2_loc_mas, c_ov_pen2_loc),
+            (f"⏱️ {nh_v}: {linea_pen2_vis}+ Penalizaciones de 2 Minutos", p_pen2_vis_mas, c_ov_pen2_vis)
         ]
-        df_nh2 = construir_tabla_mercados_kelly(m_sog_pim, "Mercado Tiros (Over) y Penalizaciones (PIM)", banca_usuario, fraccion_kelly_val, min_prob_filtro, min_edge_filtro)
+        df_nh2 = construir_tabla_mercados_kelly(m_sog_pen2, "Mercado Tiros (Over) y Penalizaciones 2'", banca_usuario, fraccion_kelly_val, min_prob_filtro, min_edge_filtro)
         st.dataframe(df_nh2.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
     with ntab3:
