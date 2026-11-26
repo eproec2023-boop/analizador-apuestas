@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 19.0 | 26 Football Leagues + 1st-Half Goals & Quant Suite",
+    page_title="Pro Bet Analyzer 19.1 | Secondary League Mode & 1st-Half Goals",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -343,8 +343,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 19.0 <span style="color:#ff8c00;">| 26 FOOTBALL LEAGUES & 1T GOALS</span></h1>
-<p>8 Ligas de Segundo Orden con Telemetría Completa • Mercado Gol 1er Tiempo (0.5 1T) • Roster Injuries & Bitácora Persistente</p>
+<h1>🏆 PRO BET ANALYZER 19.1 <span style="color:#ff8c00;">| 26 LEAGUES, 1T GOALS & SECONDARY FILTER</span></h1>
+<p>Modo Liga Secundaria (Oculta Tiros sin Cuota en Betano) • Gol 1er Tiempo (0.5 1T) • Roster Injuries & Bitácora Persistente</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1996,7 +1996,7 @@ with st.expander(f"📒 BITÁCORA PERSISTENTE DE APUESTAS ({st.session_state.get
         st.download_button("📥 Descargar Respaldo Bitácora en CSV / Excel", data=csv_export, file_name="bitacora_pro_bet_analyzer.csv", mime="text/csv")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (26 COMPETICIONES + GOL 1ER TIEMPO + MARKET PRIOR + xG)
+# 1. MÓDULO FÚTBOL (26 COMPETICIONES + GOL 1ER TIEMPO + MODO LIGA SECUNDARIA)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -2030,6 +2030,14 @@ if deporte_activo.startswith("⚽"):
         "🇲🇽 Liga MX (México)": "https://www.football-data.co.uk/new/MEX.csv"
     }
     liga_sel = st.sidebar.selectbox("Selecciona la Liga / Torneo (26):", list(LIGAS_FUT.keys()))
+
+    # Detección automática de ligas donde Betano habitualmente no abre líneas de remates
+    es_liga_sin_tiros_betano = any(tag in liga_sel for tag in ["2ª", "3ª", "4ª", "Nations League", "MLS", "Brasileirão", "Argentina", "Liga MX"])
+    modo_liga_secundaria = st.sidebar.checkbox(
+        "🎯 Modo Liga Secundaria (Ocultar Tiros sin Cuota)",
+        value=es_liga_sin_tiros_betano,
+        help="Oculta las filas e inputs de Tiros Totales y Tiros al Arco (que Betano no abre en ascensos/ligas menores), dejando visibles solo los mercados cotizados (Goles 1T/FT, 1X2, BTTS, Córners y Tarjetas)."
+    )
 
     @st.cache_data(ttl=1800)
     def cargar_datos_futbol_real(codigo_o_url):
@@ -2175,11 +2183,18 @@ if deporte_activo.startswith("⚽"):
     cuota_btts_si = cb6.number_input("BTTS SÍ", 1.01, 20.0, 1.80, 0.05)
     cuota_btts_no = cb7.number_input("BTTS NO", 1.01, 20.0, 1.95, 0.05)
 
-    with st.sidebar.expander("📏 Cuotas Tiros, Córners (FT/1T) y Tarjetas"):
-        linea_remates = st.number_input("Línea Tiros Totales", 10.5, 40.5, 24.5, 1.0)
-        cuota_over_rem = st.number_input("Cuota Over Tiros", 1.01, 15.0, 1.85, 0.05)
-        linea_puerta = st.number_input("Línea Tiros al Arco", 3.5, 20.5, 8.5, 1.0)
-        cuota_over_pue = st.number_input("Cuota Over al Arco", 1.01, 15.0, 1.85, 0.05)
+    titulo_expander_esp = "📏 Cuotas Córners (FT/1T) y Tarjetas" if modo_liga_secundaria else "📏 Cuotas Tiros, Córners (FT/1T) y Tarjetas"
+    with st.sidebar.expander(titulo_expander_esp):
+        if not modo_liga_secundaria:
+            linea_remates = st.number_input("Línea Tiros Totales", 10.5, 40.5, 24.5, 1.0)
+            cuota_over_rem = st.number_input("Cuota Over Tiros", 1.01, 15.0, 1.85, 0.05)
+            linea_puerta = st.number_input("Línea Tiros al Arco", 3.5, 20.5, 8.5, 1.0)
+            cuota_over_pue = st.number_input("Cuota Over al Arco", 1.01, 15.0, 1.85, 0.05)
+            st.markdown("---")
+        else:
+            linea_remates, cuota_over_rem = 24.5, 1.85
+            linea_puerta, cuota_over_pue = 8.5, 1.85
+
         linea_corners = st.number_input("Línea Córners Totales (FT)", 4.5, 20.5, 8.5, 1.0)
         cuota_over_cor = st.number_input("Cuota Over Córners FT", 1.01, 15.0, 1.85, 0.05)
         linea_cor_1t = st.number_input("Línea Córners 1er Tiempo (1T)", 2.5, 8.5, 4.5, 1.0)
@@ -2288,7 +2303,6 @@ if deporte_activo.startswith("⚽"):
     lam_loc = (peso_m_comb * lam_loc_stats) + ((1.0 - peso_m_comb) * xg_mkt_l)
     lam_vis = (peso_m_comb * lam_vis_stats) + ((1.0 - peso_m_comb) * xg_mkt_v)
 
-    # Cálculo específico de Goles Esperados en el 1er Tiempo (HTHG / HTAG reales o respaldo 0.445)
     ratio_ht_base = 0.445
     if tiene_ht_csv:
         tot_g_liga = max(float((df_csv['FTHG'] + df_csv['FTAG']).dropna().sum()), 1.0)
@@ -2445,15 +2459,16 @@ if deporte_activo.startswith("⚽"):
 
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("⚽ Goles FT / 1T", f"{lam_loc+lam_vis:.2f} FT | {lam_1t_total:.2f} 1T", f"Prob Gol 1T: {prob_over05_1t*100:.1f}%")
-    k2.metric("🎯 Tiros Totales Esp.", f"{lam_rem:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
-    k3.metric("🥅 Tiros al Arco Esp.", f"{lam_pue:.1f} arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
+    k2.metric("🎯 Tiros Totales Esp.", f"{lam_rem:.1f} tiros", "Solo xG Sintético" if modo_liga_secundaria else f"{sh_l:.1f} L + {sh_v:.1f} V")
+    k3.metric("🥅 Tiros al Arco Esp.", f"{lam_pue:.1f} arco", "Solo xG Sintético" if modo_liga_secundaria else f"{sot_l:.1f} L + {sot_v:.1f} V")
     k4.metric("⛳ Córners FT / 1T", f"{lam_cor:.1f} FT | {lam_cor_1t:.1f} 1T", "Anti-Goleada -14%" if (hay_riesgo_goleada and usar_blowout) else f"{cor_l:.1f} L + {cor_v:.1f} V")
     k5.metric("🟨 Tarjetas Esp.", f"{tarj_tot_esp:.1f} tarj.", f"Vig 1X2: {vig_1x2}% | 1T: {vig_1t}%")
 
     CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
 
+    nombre_tab2 = "⛳ 2. Córners (FT / 1T)" if modo_liga_secundaria else "⛳ 2. Tiros y Córners (FT / 1T)"
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🎯 1. Goles (FT/1T) y 1X2", "⛳ 2. Tiros y Córners (FT / 1T)", "🟨 3. Tarjetas (Árbitro/Clásico)",
+        "🎯 1. Goles (FT/1T) y 1X2", nombre_tab2, "🟨 3. Tarjetas (Árbitro/Clásico)",
         "🔢 4. Matriz Exacta", "🔴 5. Radar En Vivo"
     ])
     with tab1:
@@ -2475,15 +2490,23 @@ if deporte_activo.startswith("⚽"):
     with tab2:
         if hay_riesgo_goleada and usar_blowout:
             st.warning(msg_goleada)
-        m_e = [
-            (f"⛳ 1er Tiempo: Más de {linea_cor_1t} Córners 1T (Over)", p_ov_cor_1t, cuota_over_cor_1t),
-            (f"⛳ Partido Completo: Más de {linea_corners} Córners FT (Over)", p_ov_cor, cuota_over_cor),
-            (f"⛳ Partido Completo: Menos de {linea_corners} Córners FT (Under)", 1.0 - p_ov_cor, 1.85),
-            (f"🎯 Más de {linea_remates} Tiros Totales (Over)", p_ov_rem, cuota_over_rem),
-            (f"🎯 Menos de {linea_remates} Tiros Totales (Under)", 1.0 - p_ov_rem, 1.85),
-            (f"🥅 Más de {linea_puerta} Tiros al Arco (Over)", p_ov_pue, cuota_over_pue),
-            (f"🥅 Menos de {linea_puerta} Tiros al Arco (Under)", 1.0 - p_ov_pue, 1.85)
-        ]
+        if modo_liga_secundaria:
+            st.info("🎯 **Modo Liga Secundaria Activo:** Se ocultaron las líneas de Remates Totales y Remates al Arco porque Betano no las cotiza en esta competición (tus datos de tiros siguen activos internamente en el xG Sintético).")
+            m_e = [
+                (f"⛳ 1er Tiempo: Más de {linea_cor_1t} Córners 1T (Over)", p_ov_cor_1t, cuota_over_cor_1t),
+                (f"⛳ Partido Completo: Más de {linea_corners} Córners FT (Over)", p_ov_cor, cuota_over_cor),
+                (f"⛳ Partido Completo: Menos de {linea_corners} Córners FT (Under)", 1.0 - p_ov_cor, 1.85)
+            ]
+        else:
+            m_e = [
+                (f"⛳ 1er Tiempo: Más de {linea_cor_1t} Córners 1T (Over)", p_ov_cor_1t, cuota_over_cor_1t),
+                (f"⛳ Partido Completo: Más de {linea_corners} Córners FT (Over)", p_ov_cor, cuota_over_cor),
+                (f"⛳ Partido Completo: Menos de {linea_corners} Córners FT (Under)", 1.0 - p_ov_cor, 1.85),
+                (f"🎯 Más de {linea_remates} Tiros Totales (Over)", p_ov_rem, cuota_over_rem),
+                (f"🎯 Menos de {linea_remates} Tiros Totales (Under)", 1.0 - p_ov_rem, 1.85),
+                (f"🥅 Más de {linea_puerta} Tiros al Arco (Over)", p_ov_pue, cuota_over_pue),
+                (f"🥅 Menos de {linea_puerta} Tiros al Arco (Under)", 1.0 - p_ov_pue, 1.85)
+            ]
         df_t2 = construir_tabla_mercados_kelly(m_e, "Mercado Especial", banca_usuario, fraccion_kelly_val, min_prob_filtro, min_edge_filtro)
         st.dataframe(df_t2.style.apply(resaltar_valor, axis=1), column_config=CONFIG_BARRA_PROB, use_container_width=True, hide_index=True)
 
