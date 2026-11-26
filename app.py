@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, date
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Pro Bet Analyzer 18.2 | Multi-Channel Roster Injuries & Quant Suite",
+    page_title="Pro Bet Analyzer 19.0 | 26 Football Leagues + 1st-Half Goals & Quant Suite",
     page_icon="🏆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -343,8 +343,8 @@ button[data-baseweb="tab"] {
 }
 </style>
 <div class="main-banner">
-<h1>🏆 PRO BET ANALYZER 18.2 <span style="color:#ff8c00;">| MULTI-CHANNEL ROSTER INJURIES & QUANT</span></h1>
-<p>Radar de Bajas en Plantillas Oficiales + Noticias Multi-Liga • Market-Anchored Bayesian xG • De-Vig & Bitácora Persistente</p>
+<h1>🏆 PRO BET ANALYZER 19.0 <span style="color:#ff8c00;">| 26 FOOTBALL LEAGUES & 1T GOALS</span></h1>
+<p>8 Ligas de Segundo Orden con Telemetría Completa • Mercado Gol 1er Tiempo (0.5 1T) • Roster Injuries & Bitácora Persistente</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -396,6 +396,8 @@ MERCADOS_SISTEMA = {
         "1X2: Gana Local (1)",
         "1X2: Empate (X)",
         "1X2: Gana Visita (2)",
+        "1er Tiempo: Más de 0.5 Goles 1T (Over 0.5 1T)",
+        "1er Tiempo: Menos de 0.5 Goles 1T (Under 0.5 1T)",
         "Goles: Más de 2.5 Goles (Over)",
         "Goles: Menos de 2.5 Goles (Under)",
         "Ambos Equipos Anotan (BTTS - SÍ)",
@@ -734,7 +736,18 @@ CLASICOS_MUNDIALES = [
     ("netherlands", "belgium", "Derbi de los Países Bajos (+16% Fricción)"),
     ("serbia", "croatia", "Clásico Balcánico Alta Tensión (+22% Fricción)"),
     ("serbia", "albania", "Rivalidad Balcánica Alta Tensión (+22% Fricción)"),
-    ("greece", "turkey", "Derbi del Egeo (+20% Fricción)")
+    ("greece", "turkey", "Derbi del Egeo (+20% Fricción)"),
+    ("millwall", "west ham", "Dockers Derby (+22% Fricción)"),
+    ("sheffield wed", "sheffield united", "Steel City Derby (+20% Fricción)"),
+    ("southampton", "portsmouth", "South Coast Derby (+20% Fricción)"),
+    ("norwich", "ipswich", "East Anglian Derby (+18% Fricción)"),
+    ("cardiff", "swansea", "South Wales Derby (+20% Fricción)"),
+    ("st pauli", "hamburg", "Derbi de Hamburgo (+20% Fricción)"),
+    ("schalke", "bochum", "Derbi del Ruhr (+18% Fricción)"),
+    ("oviedo", "sp gijon", "Derbi Asturiano (+20% Fricción)"),
+    ("zaragoza", "huesca", "Derbi Aragonés (+18% Fricción)"),
+    ("palermo", "catania", "Derbi de Sicilia (+22% Fricción)"),
+    ("brescia", "atalanta", "Derbi Lombardo (+20% Fricción)")
 ]
 
 def evaluar_clasico_y_friccion_h2h(eq_loc, eq_vis, df_csv, media_tarj_liga=4.0):
@@ -941,13 +954,21 @@ ESPN_LEAGUE_MAP = {
     "🥈 UEFA Europa League": ("soccer", "uefa.europa"),
     "🥉 UEFA Conference League": ("soccer", "uefa.europa.conf"),
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": ("soccer", "eng.1"),
+    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 EFL Championship (Inglaterra 2ª)": ("soccer", "eng.2"),
+    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 EFL League One (Inglaterra 3ª)": ("soccer", "eng.3"),
+    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 EFL League Two (Inglaterra 4ª)": ("soccer", "eng.4"),
     "🇪🇸 LaLiga (España)": ("soccer", "esp.1"),
+    "🇪🇸 LaLiga Hypermotion (España 2ª)": ("soccer", "esp.2"),
     "🇮🇹 Serie A (Italia)": ("soccer", "ita.1"),
+    "🇮🇹 Serie B (Italia 2ª)": ("soccer", "ita.2"),
     "🇩🇪 Bundesliga (Alemania)": ("soccer", "ger.1"),
+    "🇩🇪 2. Bundesliga (Alemania 2ª)": ("soccer", "ger.2"),
     "🇫🇷 Ligue 1 (Francia)": ("soccer", "fra.1"),
+    "🇫🇷 Ligue 2 (Francia 2ª)": ("soccer", "fra.2"),
     "🇳🇱 Eredivisie (Países Bajos)": ("soccer", "ned.1"),
     "🇵🇹 Primeira Liga (Portugal)": ("soccer", "por.1"),
     "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Premiership (Escocia)": ("soccer", "sco.1"),
+    "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Scottish Championship (Escocia 2ª)": ("soccer", "sco.2"),
     "🇧🇪 Jupiler Pro League (Bélgica)": ("soccer", "bel.1"),
     "🇹🇷 Süper Lig (Turquía)": ("soccer", "tur.1"),
     "🇺🇸 MLS (Estados Unidos)": ("soccer", "usa.1"),
@@ -991,7 +1012,16 @@ ALIAS_CLUBES_FUTBOL = {
     "ac milan": ["milan", "ac milan"],
     "tottenham hotspur": ["tottenham", "spurs"],
     "newcastle united": ["newcastle", "newcastle united"],
-    "nottingham forest": ["nottingham", "forest"]
+    "nottingham forest": ["nottingham", "forest"],
+    "sheffield wed": ["sheffield wednesday", "sheffield wed"],
+    "west brom": ["west bromwich", "west brom"],
+    "qpr": ["queens park rangers", "qpr"],
+    "sp gijon": ["sporting gijon", "sp gijon"],
+    "deportivo": ["deportivo la coruna", "deportivo"],
+    "racing santander": ["racing", "santander"],
+    "st pauli": ["st pauli", "pauli"],
+    "fortuna dusseldorf": ["dusseldorf", "fortuna"],
+    "kaiserslautern": ["kaiserslautern", "lautern"]
 }
 
 def obtener_claves_busqueda_equipo(nombre_eq):
@@ -1052,7 +1082,6 @@ def obtener_catalogo_equipos_y_logos_espn(sport, league):
 
 @st.cache_data(ttl=900)
 def extraer_lesiones_desde_roster_espn(sport, league, team_id, etiqueta_equipo):
-    """Inspecciona el roster oficial del club en ESPN para extraer lesiones activas de futbolistas."""
     filas = []
     if not sport or not league or not team_id:
         return filas
@@ -1060,7 +1089,6 @@ def extraer_lesiones_desde_roster_espn(sport, league, team_id, etiqueta_equipo):
         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/roster"
         r = requests.get(url, headers=HEADERS_HTTP, timeout=7).json()
         athletes = r.get("athletes", [])
-        # En algunos deportes athletes viene agrupado por posición, en fútbol viene como lista directa
         lista_jug = []
         for item in athletes:
             if "items" in item:
@@ -1099,7 +1127,6 @@ def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
     if not sport or not league:
         return pd.DataFrame()
 
-    # 1. Para deportes americanos (NBA, NFL, NHL, MLB): endpoint /injuries
     if sport != "soccer":
         try:
             url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/injuries"
@@ -1149,7 +1176,6 @@ def obtener_reporte_lesiones_espn(sport, league, eq_a, eq_b):
         except Exception:
             pass
     else:
-        # 2. Para Fútbol: consultar /roster oficial de ambos equipos en la competición y ligas principales
         mapa_ids, _ = obtener_catalogo_equipos_y_logos_espn("soccer", league)
         tid_a = mapa_ids.get(eq_a) or mapa_ids.get(eq_a.lower(), "")
         tid_b = mapa_ids.get(eq_b) or mapa_ids.get(eq_b.lower(), "")
@@ -1167,7 +1193,6 @@ def obtener_noticias_relevantes_espn(sport, league, eq_a, eq_b):
     if not sport:
         return titulares
 
-    # En fútbol consultar simultáneamente la competición actual, las 5 grandes ligas y el feed global
     urls_consulta = [f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/news?limit=40"]
     if sport == "soccer":
         for lg_extra in ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1"]:
@@ -1209,7 +1234,6 @@ def calcular_penalizacion_automatica(df_inj, noticias, eq_loc, eq_vis):
     for _, hl, desc in noticias:
         txt = f"{hl} {desc}".lower()
         if any(pa in txt for pa in palabras_alerta):
-            # Peso extra si menciona una estrella o múltiples bajas
             peso_not = 3.2 if any(k in txt for k in ["kane", "mbappe", "haaland", "salah", "yamal", "lautaro", "vinicius", "bellingham", "saka", "rodri", "de bruyne", "absences", "ruled out"]) else 2.0
             if any(kl in txt for kl in claves_l):
                 raw_l += peso_not
@@ -1506,13 +1530,21 @@ def obtener_catalogo_maestro_entidades():
     cod_temp = obtener_codigo_temporada_dinamico()
     urls_fut_cat = [
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/E0.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/E1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/E2.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/E3.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/SP1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/SP2.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/I1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/I2.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/D1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/D2.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/F1.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/F2.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/N1.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/P1.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/SC0.csv",
+        f"https://www.football-data.co.uk/mmz4281/{cod_temp}/SC1.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/B1.csv",
         f"https://www.football-data.co.uk/mmz4281/{cod_temp}/T1.csv",
         "https://www.football-data.co.uk/new/USA.csv",
@@ -1549,13 +1581,13 @@ def obtener_catalogo_maestro_entidades():
     catalogo["🏒 Hockey (NHL)"] = sorted(list(m_nhl.keys())) if m_nhl else ["New York Rangers", "Boston Bruins", "Edmonton Oilers"]
 
     m_nba, _ = obtener_catalogo_equipos_y_logos_espn("basketball", "nba")
-    catalogo["🏀 Basketball (NBA)"] = sorted(list(m_nba.keys())) if m_nba else ["Boston Celtics", "Denver Nuggets", "Los Angeles Lakers"]
+    catalogo["🏀 Basketball (NBA)"] = sorted([k for k in m_nba.keys() if not k.islower()]) if m_nba else ["Boston Celtics", "Denver Nuggets", "Los Angeles Lakers"]
 
     m_nfl, _ = obtener_catalogo_equipos_y_logos_espn("football", "nfl")
-    catalogo["🏈 Fútbol Americano (NFL)"] = sorted(list(m_nfl.keys())) if m_nfl else ["Kansas City Chiefs", "Buffalo Bills", "San Francisco 49ers"]
+    catalogo["🏈 Fútbol Americano (NFL)"] = sorted([k for k in m_nfl.keys() if not k.islower()]) if m_nfl else ["Kansas City Chiefs", "Buffalo Bills", "San Francisco 49ers"]
 
     m_mlb, _ = obtener_catalogo_equipos_y_logos_espn("baseball", "mlb")
-    catalogo["⚾ Béisbol (MLB)"] = sorted(list(m_mlb.keys())) if m_mlb else ["New York Yankees", "Los Angeles Dodgers", "Houston Astros"]
+    catalogo["⚾ Béisbol (MLB)"] = sorted([k for k in m_mlb.keys() if not k.islower()]) if m_mlb else ["New York Yankees", "Los Angeles Dodgers", "Houston Astros"]
 
     return catalogo
 
@@ -1695,7 +1727,7 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 🎯 Selector Maestro de Deporte")
 opciones_deportes = [
-    "⚽ Fútbol (18 Torneos: Market-Anchored xG + Roster Injuries)",
+    "⚽ Fútbol (26 Torneos: 1ª + 8 Ligas 2º Orden + Gol 1T)",
     "🎾 Tenis (ATP / WTA Superficie 2x, Aces + De-Vig)",
     "🏒 Hockey sobre Hielo (NHL - SOG Over, Penalizaciones 2' + De-Vig)",
     "🏀 Basketball (NBA - Local/Visita, B2B + Spread + De-Vig)",
@@ -1964,7 +1996,7 @@ with st.expander(f"📒 BITÁCORA PERSISTENTE DE APUESTAS ({st.session_state.get
         st.download_button("📥 Descargar Respaldo Bitácora en CSV / Excel", data=csv_export, file_name="bitacora_pro_bet_analyzer.csv", mime="text/csv")
 
 # ==============================================================================
-# 1. MÓDULO FÚTBOL (MARKET-ANCHORED BAYESIAN + MULTI-CHANNEL ROSTER INJURIES)
+# 1. MÓDULO FÚTBOL (26 COMPETICIONES + GOL 1ER TIEMPO + MARKET PRIOR + xG)
 # ==============================================================================
 if deporte_activo.startswith("⚽"):
     st.sidebar.markdown("### 🏆 1. Competición y Equipos")
@@ -1974,13 +2006,21 @@ if deporte_activo.startswith("⚽"):
         "🥈 UEFA Europa League": "UEFA_EUROPA",
         "🥉 UEFA Conference League": "UEFA_CONFERENCE",
         "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Inglaterra)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/E0.csv",
+        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 EFL Championship (Inglaterra 2ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/E1.csv",
+        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 EFL League One (Inglaterra 3ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/E2.csv",
+        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 EFL League Two (Inglaterra 4ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/E3.csv",
         "🇪🇸 LaLiga (España)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/SP1.csv",
+        "🇪🇸 LaLiga Hypermotion (España 2ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/SP2.csv",
         "🇮🇹 Serie A (Italia)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/I1.csv",
+        "🇮🇹 Serie B (Italia 2ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/I2.csv",
         "🇩🇪 Bundesliga (Alemania)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/D1.csv",
+        "🇩🇪 2. Bundesliga (Alemania 2ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/D2.csv",
         "🇫🇷 Ligue 1 (Francia)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/F1.csv",
+        "🇫🇷 Ligue 2 (Francia 2ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/F2.csv",
         "🇳🇱 Eredivisie (Países Bajos)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/N1.csv",
         "🇵🇹 Primeira Liga (Portugal)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/P1.csv",
         "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Premiership (Escocia)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/SC0.csv",
+        "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Scottish Championship (Escocia 2ª)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/SC1.csv",
         "🇧🇪 Jupiler Pro League (Bélgica)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/B1.csv",
         "🇹🇷 Süper Lig (Turquía)": f"https://www.football-data.co.uk/mmz4281/{cod_temp_act}/T1.csv",
         "🌍 UEFA Nations League (Selecciones UEFA)": "NATIONS_LEAGUE",
@@ -1989,7 +2029,7 @@ if deporte_activo.startswith("⚽"):
         "🇦🇷 Liga Profesional (Argentina)": "https://www.football-data.co.uk/new/ARG.csv",
         "🇲🇽 Liga MX (México)": "https://www.football-data.co.uk/new/MEX.csv"
     }
-    liga_sel = st.sidebar.selectbox("Selecciona la Liga / Torneo:", list(LIGAS_FUT.keys()))
+    liga_sel = st.sidebar.selectbox("Selecciona la Liga / Torneo (26):", list(LIGAS_FUT.keys()))
 
     @st.cache_data(ttl=1800)
     def cargar_datos_futbol_real(codigo_o_url):
@@ -2117,15 +2157,19 @@ if deporte_activo.startswith("⚽"):
     mult_bajas_l, mult_bajas_v, pct_baja_l, pct_baja_v = renderizar_panel_bajas_y_factor(espn_sp, espn_lg, eq_l, eq_v, f"fut_{eq_l}_{eq_v}")
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🟠 2. Cuotas en Betano (Goles & 1X2)")
+    st.sidebar.markdown("### 🟠 2. Cuotas en Betano (1X2, Goles FT y 1T)")
     cb1, cb2, cb3 = st.sidebar.columns(3)
     cuota_1 = cb1.number_input("Local (1)", 1.01, 50.0, 2.10, 0.05)
     cuota_x = cb2.number_input("Empate (X)", 1.01, 50.0, 3.40, 0.05)
     cuota_2 = cb3.number_input("Visita (2)", 1.01, 50.0, 3.20, 0.05)
 
+    cb_1t1, cb_1t2 = st.sidebar.columns(2)
+    cuota_over05_1t = cb_1t1.number_input("⏱️ Over 0.5 Goles 1T", 1.01, 15.0, 1.38, 0.05)
+    cuota_under05_1t = cb_1t2.number_input("⏱️ Under 0.5 Goles 1T", 1.01, 15.0, 2.85, 0.05)
+
     cb4, cb5 = st.sidebar.columns(2)
-    cuota_over25 = cb4.number_input("Over 2.5 Goles", 1.01, 20.0, 1.85, 0.05)
-    cuota_under25 = cb5.number_input("Under 2.5 Goles", 1.01, 20.0, 1.95, 0.05)
+    cuota_over25 = cb4.number_input("Over 2.5 Goles FT", 1.01, 20.0, 1.85, 0.05)
+    cuota_under25 = cb5.number_input("Under 2.5 Goles FT", 1.01, 20.0, 1.95, 0.05)
 
     cb6, cb7 = st.sidebar.columns(2)
     cuota_btts_si = cb6.number_input("BTTS SÍ", 1.01, 20.0, 1.80, 0.05)
@@ -2146,6 +2190,7 @@ if deporte_activo.startswith("⚽"):
         cuota_under_tarj = st.number_input("Cuota Under Tarjetas", 1.01, 15.0, 1.90, 0.05)
 
     p_limp_1x2, vig_1x2 = calcular_probabilidades_limpias_devig([cuota_1, cuota_x, cuota_2])
+    p_limp_1t, vig_1t = calcular_probabilidades_limpias_devig([cuota_over05_1t, cuota_under05_1t])
     p_limp_ou25, vig_ou25 = calcular_probabilidades_limpias_devig([cuota_over25, cuota_under25])
     p_limp_btts, vig_btts = calcular_probabilidades_limpias_devig([cuota_btts_si, cuota_btts_no])
     p_limp_tarj, vig_tarj = calcular_probabilidades_limpias_devig([cuota_over_tarj, cuota_under_tarj])
@@ -2155,6 +2200,7 @@ if deporte_activo.startswith("⚽"):
 
     tiene_tiros_csv = ('HS' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HS'].dropna().empty and not p_v['AS'].dropna().empty)
     tiene_tarjetas_csv = ('HY' in df_csv.columns and not p_l.empty and not p_v.empty and not p_l['HY'].dropna().empty and not p_v['AY'].dropna().empty)
+    tiene_ht_csv = ('HTHG' in df_csv.columns and 'HTAG' in df_csv.columns and not df_csv['HTHG'].dropna().empty)
 
     if usar_xg_sint and tiene_tiros_csv:
         p_l["xG_F_ef"] = 0.50 * p_l["FTHG"] + 0.50 * (0.33 * p_l["HST"].fillna(0) + 0.075 * (p_l["HS"].fillna(0) - p_l["HST"].fillna(0)).clip(lower=0))
@@ -2242,6 +2288,32 @@ if deporte_activo.startswith("⚽"):
     lam_loc = (peso_m_comb * lam_loc_stats) + ((1.0 - peso_m_comb) * xg_mkt_l)
     lam_vis = (peso_m_comb * lam_vis_stats) + ((1.0 - peso_m_comb) * xg_mkt_v)
 
+    # Cálculo específico de Goles Esperados en el 1er Tiempo (HTHG / HTAG reales o respaldo 0.445)
+    ratio_ht_base = 0.445
+    if tiene_ht_csv:
+        tot_g_liga = max(float((df_csv['FTHG'] + df_csv['FTAG']).dropna().sum()), 1.0)
+        tot_ht_liga = float((df_csv['HTHG'].fillna(0) + df_csv['HTAG'].fillna(0)).sum())
+        ratio_ht_liga = float(np.clip(tot_ht_liga / tot_g_liga, 0.36, 0.54))
+
+        if not p_l.empty and not p_v.empty:
+            g_tot_l = float((p_l['FTHG'] + p_l['FTAG']).sum())
+            g_ht_l = float((p_l['HTHG'].fillna(0) + p_l['HTAG'].fillna(0)).sum())
+            r_ht_l = (g_ht_l / g_tot_l) if g_tot_l >= 4 else ratio_ht_liga
+
+            g_tot_v = float((p_v['FTHG'] + p_v['FTAG']).sum())
+            g_ht_v = float((p_v['HTHG'].fillna(0) + p_v['HTAG'].fillna(0)).sum())
+            r_ht_v = (g_ht_v / g_tot_v) if g_tot_v >= 4 else ratio_ht_liga
+
+            ratio_ht_final = float(np.clip(0.50 * ratio_ht_liga + 0.25 * r_ht_l + 0.25 * r_ht_v, 0.35, 0.55))
+        else:
+            ratio_ht_final = ratio_ht_liga
+    else:
+        ratio_ht_final = ratio_ht_base
+
+    lam_1t_total = max((lam_loc + lam_vis) * ratio_ht_final, 0.20)
+    prob_over05_1t = float(1.0 - poisson.pmf(0, lam_1t_total))
+    prob_under05_1t = 1.0 - prob_over05_1t
+
     mat_raw = np.zeros((9, 9))
     for i in range(9):
         for j in range(9):
@@ -2311,7 +2383,7 @@ if deporte_activo.startswith("⚽"):
     renderizar_hero_card_deporte(
         eq_l, eq_v, logo_eq_l, fb_eq_l, logo_eq_v, fb_eq_v,
         liga_sel, f"{lam_loc:.2f}  —  {lam_vis:.2f}",
-        f"Market Prior: {'ON' if usar_amortiguador else 'OFF'} • xG Sintético: {'ON' if usar_xg_sint else 'OFF'} • Dixon-Coles: {'ON' if usar_dc else 'OFF'}",
+        f"xG 1T: {lam_1t_total:.2f} ({prob_over05_1t*100:.1f}% Gol 1T) • Market Prior: {'ON' if usar_amortiguador else 'OFF'} • Dixon-Coles: {'ON' if usar_dc else 'OFF'}",
         prob_1, prob_x, prob_2, pct_baja_l, pct_baja_v,
         badge_extra=badge_hero,
         sub_loc=f"🏠 LOCAL • Puesto #{info_pos_l['pos']} ({info_pos_l['pts']} pts)",
@@ -2320,6 +2392,7 @@ if deporte_activo.startswith("⚽"):
 
     TRADUCCION_COLS_FUTBOL = {
         "Date": "Fecha", "Tournament": "Torneo", "Referee": "Árbitro", "HomeTeam": "Equipo Local", "AwayTeam": "Equipo Visita",
+        "HTHG": "Goles 1T Loc", "HTAG": "Goles 1T Vis",
         "FTHG": "Goles Local", "FTAG": "Goles Visita",
         "HS": "Tiros Local", "HST": "Arco Local", "HC": "Córners Local",
         "HY": "Amarillas Local", "HR": "Rojas Local",
@@ -2327,23 +2400,23 @@ if deporte_activo.startswith("⚽"):
         "AY": "Amarillas Visita", "AR": "Rojas Visita"
     }
 
-    with st.expander(f"📋 TABLA DE AUDITORÍA: Clasificación, Partidos Reales, Árbitros y Córners ({eq_l} #{info_pos_l['pos']} vs {eq_v} #{info_pos_v['pos']})", expanded=False):
+    with st.expander(f"📋 TABLA DE AUDITORÍA: Clasificación, Partidos Reales (FT/1T), Árbitros y Córners ({eq_l} #{info_pos_l['pos']} vs {eq_v} #{info_pos_v['pos']})", expanded=False):
         if es_clasico:
             st.warning(f"Alerta de Rivalidad Detectada: {etiqueta_clasico} — El modelo multiplica automáticamente las tarjetas esperadas por {factor_clasico:.2f}x.")
         if hay_riesgo_goleada:
             st.warning(msg_goleada)
         if tiene_tiros_csv and tiene_tarjetas_csv:
-            st.success(f"✅ Telemetría Completa Opta / ESPN con Market Prior + xG Sintético (Muestra: {pj_l} PJ Local + {pj_v} PJ Visita).")
+            st.success(f"✅ Telemetría Completa Real (1T + FT + Tiros + Córners + Tarjetas + Árbitro | Muestra: {pj_l} PJ Local + {pj_v} PJ Visita | Ratio Gol 1T: {ratio_ht_final*100:.1f}%).")
         else:
             st.warning("⚠️ Liga de América / Selecciones: El registro oficial público contiene Goles Reales verificados partido a partido, pero no incluye conteos de Tiros ni Tarjetas.")
 
         if not p_l.empty:
-            cols_l = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
+            cols_l = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'HTHG', 'HTAG', 'FTHG', 'FTAG', 'HS', 'HST', 'HC', 'HY', 'HR'] if c in p_l.columns]
             st.markdown(f"**🏠 Últimos {len(p_l)} partidos de {eq_l} como LOCAL (Puesto #{info_pos_l['pos']}):**")
             st.dataframe(p_l[cols_l].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
 
         if not p_v.empty:
-            cols_v = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
+            cols_v = [c for c in ['Date', 'Referee', 'Tournament', 'HomeTeam', 'AwayTeam', 'HTHG', 'HTAG', 'FTHG', 'FTAG', 'AS', 'AST', 'AC', 'AY', 'AR'] if c in p_v.columns]
             st.markdown(f"**✈️ Últimos {len(p_v)} partidos de {eq_v} como VISITANTE (Puesto #{info_pos_v['pos']}):**")
             st.dataframe(p_v[cols_v].rename(columns=TRADUCCION_COLS_FUTBOL), use_container_width=True, hide_index=True)
 
@@ -2371,26 +2444,28 @@ if deporte_activo.startswith("⚽"):
     p_un_tarj = 1.0 - p_ov_tarj
 
     k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("⚽ Goles Esp. (xG)", f"{lam_loc:.2f} - {lam_vis:.2f}", f"Total: {lam_loc+lam_vis:.2f}")
+    k1.metric("⚽ Goles FT / 1T", f"{lam_loc+lam_vis:.2f} FT | {lam_1t_total:.2f} 1T", f"Prob Gol 1T: {prob_over05_1t*100:.1f}%")
     k2.metric("🎯 Tiros Totales Esp.", f"{lam_rem:.1f} tiros", f"{sh_l:.1f} L + {sh_v:.1f} V")
     k3.metric("🥅 Tiros al Arco Esp.", f"{lam_pue:.1f} arco", f"{sot_l:.1f} L + {sot_v:.1f} V")
     k4.metric("⛳ Córners FT / 1T", f"{lam_cor:.1f} FT | {lam_cor_1t:.1f} 1T", "Anti-Goleada -14%" if (hay_riesgo_goleada and usar_blowout) else f"{cor_l:.1f} L + {cor_v:.1f} V")
-    k5.metric("🟨 Tarjetas Esp.", f"{tarj_tot_esp:.1f} tarj.", f"Vig 1X2: {vig_1x2}% | O/U: {vig_ou25}%")
+    k5.metric("🟨 Tarjetas Esp.", f"{tarj_tot_esp:.1f} tarj.", f"Vig 1X2: {vig_1x2}% | 1T: {vig_1t}%")
 
     CONFIG_BARRA_PROB = {"Prob. Real": st.column_config.ProgressColumn("Prob. Real (%)", format="%.1f%%", min_value=0, max_value=100)}
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🎯 1. Goles y 1X2 (De-Vig)", "⛳ 2. Tiros y Córners (FT / 1T)", "🟨 3. Tarjetas (Árbitro/Clásico)",
+        "🎯 1. Goles (FT/1T) y 1X2", "⛳ 2. Tiros y Córners (FT / 1T)", "🟨 3. Tarjetas (Árbitro/Clásico)",
         "🔢 4. Matriz Exacta", "🔴 5. Radar En Vivo"
     ])
     with tab1:
-        st.caption(f"🔍 **Auditoría De-Vig Betano:** Comisión en 1X2: **`{vig_1x2}%`** | Comisión en Over/Under 2.5: **`{vig_ou25}%`** | Comisión en BTTS: **`{vig_btts}%`**")
+        st.caption(f"🔍 **Auditoría De-Vig Betano:** Vig 1X2: **`{vig_1x2}%`** | Vig Gol 1er Tiempo (0.5 1T): **`{vig_1t}%`** | Vig O/U 2.5: **`{vig_ou25}%`** | Vig BTTS: **`{vig_btts}%`**")
         m_g = [
             (f"Gana {eq_l} (1)", prob_1, cuota_1, p_limp_1x2[0]),
             ("Empate (X)", prob_x, cuota_x, p_limp_1x2[1]),
             (f"Gana {eq_v} (2)", prob_2, cuota_2, p_limp_1x2[2]),
-            ("Más de 2.5 Goles (Over)", prob_o25, cuota_over25, p_limp_ou25[0]),
-            ("Menos de 2.5 Goles (Under)", prob_u25, cuota_under25, p_limp_ou25[1]),
+            ("⏱️ 1er Tiempo: Más de 0.5 Goles 1T (Over 0.5 1T)", prob_over05_1t, cuota_over05_1t, p_limp_1t[0]),
+            ("⏱️ 1er Tiempo: Menos de 0.5 Goles 1T (Under 0.5 1T)", prob_under05_1t, cuota_under05_1t, p_limp_1t[1]),
+            ("Más de 2.5 Goles FT (Over)", prob_o25, cuota_over25, p_limp_ou25[0]),
+            ("Menos de 2.5 Goles FT (Under)", prob_u25, cuota_under25, p_limp_ou25[1]),
             ("Ambos Equipos Anotan - SÍ", prob_btts_si, cuota_btts_si, p_limp_btts[0]),
             ("Ambos Equipos Anotan - NO", prob_btts_no, cuota_btts_no, p_limp_btts[1])
         ]
